@@ -19,7 +19,7 @@ GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN', '')
 GITHUB_REPOSITORY = os.environ.get('GITHUB_REPOSITORY', '')
 MAX_PAGES = 100  # Limit to prevent infinite crawling
 REQUEST_TIMEOUT = 10
-USER_AGENT = 'Mozilla/5.0 (compatible; DeadLinkChecker/1.0)'
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 
 
 class LinkChecker:
