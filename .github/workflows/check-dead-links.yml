@@ -27,7 +27,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install requests beautifulsoup4 urllib3
+          pip install -r requirements.txt
       
       - name: Run dead link checker
         id: link_checker

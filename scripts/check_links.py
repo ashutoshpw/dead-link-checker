@@ -71,8 +71,8 @@ class LinkChecker:
             response = self.session.head(url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
             status_code = response.status_code
             
-            # Some servers don't support HEAD, fallback to GET
-            if status_code == 405 or status_code == 404:
+            # Some servers don't support HEAD, fallback to GET only for 405
+            if status_code == 405:
                 response = self.session.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
                 status_code = response.status_code
             
@@ -147,7 +147,7 @@ class LinkChecker:
         
         api_url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/issues"
         headers = {
-            'Authorization': f'token {GITHUB_TOKEN}',
+            'Authorization': f'Bearer {GITHUB_TOKEN}',
             'Accept': 'application/vnd.github.v3+json'
         }
         
