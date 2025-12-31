@@ -125,24 +125,39 @@ class LinkChecker:
                     if normalized_link not in self.visited_pages:
                         pages_to_visit.append(link)
     
-    def create_github_issue(self, page_url, broken_links):
-        """Create a GitHub issue for broken links on a page"""
+    def create_consolidated_github_issue(self):
+        """Create a single GitHub issue for all broken links found on the website"""
         if not GITHUB_TOKEN or not GITHUB_REPOSITORY:
             print("GitHub token or repository not configured, skipping issue creation")
             return
         
-        title = f"Broken links found on {page_url}"
+        if not self.broken_links:
+            return
+        
+        title = f"Broken links found on {self.base_url}"
+        
+        # Count total broken links
+        total_broken = sum(len(links) for links in self.broken_links.values())
         
         body = f"## Broken Links Report\n\n"
-        body += f"**Page:** {page_url}\n\n"
-        body += f"The following broken links were found on this page:\n\n"
+        body += f"**Website:** {self.base_url}\n"
+        body += f"**Total broken links:** {total_broken}\n"
+        body += f"**Pages affected:** {len(self.broken_links)}\n\n"
+        body += f"---\n\n"
         
-        for link_info in broken_links:
-            status = link_info['status_code']
-            url = link_info['url']
-            body += f"- `{url}` - Status Code: {status}\n"
+        # Group broken links by page
+        for page_url, broken_links_list in sorted(self.broken_links.items()):
+            body += f"### Page: {page_url}\n\n"
+            body += f"Found {len(broken_links_list)} broken link(s):\n\n"
+            
+            for link_info in broken_links_list:
+                status = link_info['status_code']
+                url = link_info['url']
+                body += f"- `{url}` - Status Code: {status}\n"
+            
+            body += f"\n"
         
-        body += f"\n---\n"
+        body += f"---\n"
         body += f"*Detected by Dead Link Checker on {time.strftime('%Y-%m-%d %H:%M:%S UTC')}*"
         
         api_url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/issues"
@@ -183,9 +198,9 @@ class LinkChecker:
                 print(f"\n{page_url}:")
                 for link_info in broken_links_list:
                     print(f"  - {link_info['url']} (Status: {link_info['status_code']})")
-                
-                # Create GitHub issue for this page
-                self.create_github_issue(page_url, broken_links_list)
+            
+            # Create a single consolidated GitHub issue for all broken links
+            self.create_consolidated_github_issue()
             
             print("\n" + "="*60)
             print("❌ FAILED: Broken links found!")
