@@ -7,7 +7,7 @@ GitHub Action workflows that check websites for broken links and missing Open Gr
 ### Dead Link Checker
 - 🔍 Crawls entire websites to discover all pages
 - 🔗 Checks all links on each page for broken links (404, 500, etc.)
-- 📝 Automatically creates GitHub issues for pages with broken links
+- 📝 Automatically creates a single GitHub issue listing all broken links found on the website
 - ✅ Passes if no broken links are found
 - ❌ Fails if broken links are detected
 
@@ -33,7 +33,7 @@ GitHub Action workflows that check websites for broken links and missing Open Gr
 The workflow will:
 - Crawl the specified website
 - Check all links found on the site
-- Create a GitHub issue for each page containing broken links
+- Create a single GitHub issue listing all broken links found, grouped by page
 - Pass (green) if no broken links are found
 - Fail (red) if broken links are detected
 
@@ -85,8 +85,8 @@ The workflow uses a Python script that:
 2. Extracts all links from each page
 3. Checks each link's HTTP status code
 4. Identifies links with 4xx or 5xx status codes as broken
-5. Creates a GitHub issue for each page with broken links
-6. Issues include the page URL and all broken links found
+5. Creates a single GitHub issue listing all broken links found
+6. The issue groups broken links by the page they were found on
 
 ### OG Image Checker
 
