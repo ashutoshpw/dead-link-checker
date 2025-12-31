@@ -11,6 +11,7 @@ Crawls a website and performs comprehensive SEO checks including:
 
 import os
 import sys
+import json
 import requests
 from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
