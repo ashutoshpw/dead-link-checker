@@ -1,0 +1,45 @@
+name: Check Dead Links
+
+on:
+  workflow_dispatch:
+    inputs:
+      website_url:
+        description: 'Website URL to check for broken links (e.g., https://example.com)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-links:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4 urllib3
+      
+      - name: Run dead link checker
+        id: link_checker
+        env:
+          WEBSITE_URL: ${{ github.event.inputs.website_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/check_links.py
+      
+      - name: Check for broken links
+        if: failure()
+        run: |
+          echo "Broken links were found. Issues have been created."
+          exit 1
