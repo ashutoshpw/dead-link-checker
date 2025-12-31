@@ -1,0 +1,45 @@
+name: Check OG Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      website_url:
+        description: 'Website URL to check for OG images (e.g., https://example.com)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-og-images:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run OG image checker
+        id: og_image_checker
+        env:
+          WEBSITE_URL: ${{ github.event.inputs.website_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/check_og_images.py
+      
+      - name: Check for missing OG images
+        if: failure()
+        run: |
+          echo "Pages without OG images were found. An issue has been created."
+          exit 1
