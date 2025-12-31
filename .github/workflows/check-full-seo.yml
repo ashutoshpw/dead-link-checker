@@ -1,0 +1,45 @@
+name: Check Full SEO
+
+on:
+  workflow_dispatch:
+    inputs:
+      website_url:
+        description: 'Website URL to check for full SEO (e.g., https://example.com)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-full-seo:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run Full SEO checker
+        id: full_seo_checker
+        env:
+          WEBSITE_URL: ${{ github.event.inputs.website_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/check_full_seo.py
+      
+      - name: Check for SEO issues
+        if: failure()
+        run: |
+          echo "SEO issues or broken links were found. An issue has been created."
+          exit 1
