@@ -9,6 +9,7 @@ import os
 import sys
 import json
 import time
+import math
 import requests
 from urllib.parse import urlparse
 from datetime import datetime
@@ -562,7 +563,6 @@ class PerformanceTracker:
             return '0 Bytes'
         k = 1024
         sizes = ['Bytes', 'KB', 'MB', 'GB']
-        import math
         i = int(math.floor(math.log(bytes_val) / math.log(k)))
         return f"{round(bytes_val / (k ** i), 2)} {sizes[i]}"
     
