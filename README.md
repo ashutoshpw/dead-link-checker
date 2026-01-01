@@ -26,9 +26,11 @@ GitHub Action workflows that check websites for broken links, missing Open Graph
 - 📝 Checks for meta description tags (with length validation)
 - 🔗 Checks for canonical links
 - 🌐 Checks for language attributes
-- 📊 Creates a comprehensive GitHub issue with all SEO findings
+- 📊 Captures Core Web Vitals (LCP, TBT, CLS) for homepage
+- ⏱️ Measures timing metrics (TTFB, FCP, fully loaded time)
+- 📝 Creates a comprehensive GitHub issue with all SEO and performance findings
 - ✅ Passes if no issues are found
-- ❌ Fails if any SEO issues or broken links are detected
+- ❌ Fails if any SEO issues, broken links, or performance issues are detected
 
 ### Performance Metric Tracker
 - 🚀 Loads webpage in a real Chromium browser via Playwright

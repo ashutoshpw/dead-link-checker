@@ -7,11 +7,13 @@ Crawls a website and performs comprehensive SEO checks including:
 - Meta titles
 - Meta descriptions
 - Other on-page SEO elements
+- Performance metrics (LCP, TBT, CLS, TTFB, FCP)
 """
 
 import os
 import sys
 import json
+import math
 import requests
 from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
@@ -25,6 +27,9 @@ GITHUB_REPOSITORY = os.environ.get('GITHUB_REPOSITORY', '')
 MAX_PAGES = 100  # Limit to prevent infinite crawling
 REQUEST_TIMEOUT = 10
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+PERFORMANCE_TIMEOUT = 60000  # 60 seconds for page load
+NETWORK_IDLE_DELAY = 2000  # 2 seconds to wait after network idle
+OBSERVER_TIMEOUT = 500  # Timeout for Performance Observer collection
 
 
 class FullSEOChecker:
@@ -53,6 +58,11 @@ class FullSEOChecker:
         self.checked_links = {}
         self.session = requests.Session()
         self.session.headers.update({'User-Agent': USER_AGENT})
+        # Performance metrics
+        self.performance_metrics = {}
+        self.performance_grade = 'A'
+        self.performance_score = 100
+        self.performance_issues = []
     
     def normalize_url(self, url):
         """Normalize URL for comparison"""
@@ -200,6 +210,229 @@ class FullSEOChecker:
                     if normalized_link not in self.visited_pages:
                         pages_to_visit.append(link)
     
+    def collect_performance_metrics(self):
+        """Collect performance metrics for the homepage using Playwright"""
+        from playwright.sync_api import sync_playwright
+        
+        print(f"\nCollecting performance metrics for: {self.base_url}")
+        
+        try:
+            playwright = sync_playwright().start()
+            browser = playwright.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu'
+                ]
+            )
+            context = browser.new_context(
+                viewport={'width': 1920, 'height': 1080}
+            )
+            page = context.new_page()
+            
+            # Load the page
+            page.goto(self.base_url, wait_until='networkidle', timeout=PERFORMANCE_TIMEOUT)
+            page.wait_for_timeout(NETWORK_IDLE_DELAY)
+            
+            # Get navigation timing data
+            navigation_timing = page.evaluate('''() => {
+                const timing = performance.getEntriesByType('navigation')[0];
+                if (!timing) return null;
+                return {
+                    ttfb: timing.responseStart - timing.requestStart,
+                    domContentLoaded: timing.domContentLoadedEventEnd,
+                    loadEventEnd: timing.loadEventEnd
+                };
+            }''')
+            
+            # Get paint timing (FCP)
+            paint_timing = page.evaluate('''() => {
+                const entries = performance.getEntriesByType('paint');
+                const fcp = entries.find(e => e.name === 'first-contentful-paint');
+                return {
+                    firstContentfulPaint: fcp ? fcp.startTime : null
+                };
+            }''')
+            
+            # Get LCP using PerformanceObserver
+            lcp = page.evaluate(f'''() => {{
+                return new Promise((resolve) => {{
+                    let lcpValue = 0;
+                    const observer = new PerformanceObserver((list) => {{
+                        const entries = list.getEntries();
+                        for (const entry of entries) {{
+                            if (entry.startTime > lcpValue) {{
+                                lcpValue = entry.startTime;
+                            }}
+                        }}
+                    }});
+                    try {{
+                        observer.observe({{ type: 'largest-contentful-paint', buffered: true }});
+                    }} catch {{}}
+                    setTimeout(() => {{
+                        observer.disconnect();
+                        resolve(lcpValue);
+                    }}, {OBSERVER_TIMEOUT});
+                }});
+            }}''')
+            
+            # Get CLS using PerformanceObserver
+            cls = page.evaluate(f'''() => {{
+                return new Promise((resolve) => {{
+                    let clsValue = 0;
+                    const observer = new PerformanceObserver((list) => {{
+                        for (const entry of list.getEntries()) {{
+                            if (!entry.hadRecentInput) {{
+                                clsValue += entry.value;
+                            }}
+                        }}
+                    }});
+                    try {{
+                        observer.observe({{ type: 'layout-shift', buffered: true }});
+                    }} catch {{}}
+                    setTimeout(() => {{
+                        observer.disconnect();
+                        resolve(clsValue);
+                    }}, {OBSERVER_TIMEOUT});
+                }});
+            }}''')
+            
+            # Get Long Tasks for TBT calculation
+            long_tasks = page.evaluate(f'''() => {{
+                return new Promise((resolve) => {{
+                    const tasks = [];
+                    const observer = new PerformanceObserver((list) => {{
+                        for (const entry of list.getEntries()) {{
+                            tasks.push({{
+                                duration: entry.duration
+                            }});
+                        }}
+                    }});
+                    try {{
+                        observer.observe({{ type: 'longtask', buffered: true }});
+                    }} catch {{}}
+                    setTimeout(() => {{
+                        observer.disconnect();
+                        resolve(tasks);
+                    }}, {OBSERVER_TIMEOUT});
+                }});
+            }}''')
+            
+            # Calculate TBT
+            tbt = 0
+            for task in long_tasks:
+                if task['duration'] > 50:
+                    tbt += task['duration'] - 50
+            
+            # Store metrics
+            self.performance_metrics = {
+                'ttfb': int(navigation_timing.get('ttfb', 0)) if navigation_timing else 0,
+                'fcp': int(paint_timing.get('firstContentfulPaint', 0) or 0),
+                'lcp': int(lcp),
+                'cls': round(cls, 3),
+                'tbt': int(tbt),
+                'dom_content_loaded': int(navigation_timing.get('domContentLoaded', 0)) if navigation_timing else 0,
+                'load_event_end': int(navigation_timing.get('loadEventEnd', 0)) if navigation_timing else 0
+            }
+            
+            # Calculate performance grade
+            self._calculate_performance_grade()
+            
+            # Close browser
+            page.close()
+            context.close()
+            browser.close()
+            playwright.stop()
+            
+            print(f"Performance metrics collected - Grade: {self.performance_grade} (Score: {self.performance_score}/100)")
+            
+        except Exception as e:
+            print(f"Error collecting performance metrics: {e}")
+            self.performance_metrics = {}
+    
+    def _calculate_performance_grade(self):
+        """Calculate performance grade based on Core Web Vitals"""
+        score = 100
+        
+        # LCP scoring (Good < 2500ms, Needs Improvement < 4000ms, Poor >= 4000ms)
+        if self.performance_metrics.get('lcp', 0) > 4000:
+            score -= 25
+            self.performance_issues.append({
+                'severity': 'high',
+                'title': 'Poor Largest Contentful Paint (LCP)',
+                'description': f"LCP is {self.performance_metrics['lcp']}ms (should be < 2500ms)"
+            })
+        elif self.performance_metrics.get('lcp', 0) > 2500:
+            score -= 10
+            self.performance_issues.append({
+                'severity': 'medium',
+                'title': 'Needs Improvement: LCP',
+                'description': f"LCP is {self.performance_metrics['lcp']}ms (should be < 2500ms)"
+            })
+        
+        # TBT scoring (Good < 200ms, Needs Improvement < 600ms, Poor >= 600ms)
+        if self.performance_metrics.get('tbt', 0) > 600:
+            score -= 25
+            self.performance_issues.append({
+                'severity': 'high',
+                'title': 'Poor Total Blocking Time (TBT)',
+                'description': f"TBT is {self.performance_metrics['tbt']}ms (should be < 200ms)"
+            })
+        elif self.performance_metrics.get('tbt', 0) > 200:
+            score -= 10
+            self.performance_issues.append({
+                'severity': 'medium',
+                'title': 'Needs Improvement: TBT',
+                'description': f"TBT is {self.performance_metrics['tbt']}ms (should be < 200ms)"
+            })
+        
+        # CLS scoring (Good < 0.1, Needs Improvement < 0.25, Poor >= 0.25)
+        if self.performance_metrics.get('cls', 0) > 0.25:
+            score -= 20
+            self.performance_issues.append({
+                'severity': 'high',
+                'title': 'Poor Cumulative Layout Shift (CLS)',
+                'description': f"CLS is {self.performance_metrics['cls']} (should be < 0.1)"
+            })
+        elif self.performance_metrics.get('cls', 0) > 0.1:
+            score -= 8
+            self.performance_issues.append({
+                'severity': 'medium',
+                'title': 'Needs Improvement: CLS',
+                'description': f"CLS is {self.performance_metrics['cls']} (should be < 0.1)"
+            })
+        
+        # TTFB scoring (Good < 800ms)
+        if self.performance_metrics.get('ttfb', 0) > 800:
+            score -= 10
+            self.performance_issues.append({
+                'severity': 'medium',
+                'title': 'Slow Time to First Byte (TTFB)',
+                'description': f"TTFB is {self.performance_metrics['ttfb']}ms (should be < 800ms)"
+            })
+        
+        # Convert score to grade
+        if score >= 90:
+            self.performance_grade = 'A'
+        elif score >= 80:
+            self.performance_grade = 'B'
+        elif score >= 70:
+            self.performance_grade = 'C'
+        elif score >= 60:
+            self.performance_grade = 'D'
+        else:
+            self.performance_grade = 'F'
+        
+        self.performance_score = max(0, min(100, score))
+    
+    def _format_time(self, ms):
+        """Format milliseconds to human-readable string"""
+        if ms < 1000:
+            return f"{ms}ms"
+        return f"{ms / 1000:.2f}s"
+    
     def create_github_issue(self):
         """Create a comprehensive GitHub issue for all SEO issues found"""
         if not GITHUB_TOKEN or not GITHUB_REPOSITORY:
@@ -225,7 +458,7 @@ class FullSEOChecker:
         
         total_broken = sum(len(links) for links in self.broken_links.values())
         
-        if not pages_with_issues and not self.broken_links:
+        if not pages_with_issues and not self.broken_links and not self.performance_issues:
             return
         
         title = f"SEO Issues Found on {self.base_url}"
@@ -234,8 +467,51 @@ class FullSEOChecker:
         body += f"**Website:** {self.base_url}\n"
         body += f"**Pages checked:** {len(self.visited_pages)}\n"
         body += f"**Pages with SEO issues:** {len(pages_with_issues)}\n"
-        body += f"**Total broken links:** {total_broken}\n\n"
+        body += f"**Total broken links:** {total_broken}\n"
+        if self.performance_metrics:
+            grade_color = '🟢' if self.performance_score >= 80 else '🟡' if self.performance_score >= 70 else '🟠' if self.performance_score >= 60 else '🔴'
+            body += f"**Performance Grade:** {grade_color} {self.performance_grade} (Score: {self.performance_score}/100)\n"
+        body += f"\n"
         body += f"---\n\n"
+        
+        # Performance Metrics Section
+        if self.performance_metrics:
+            body += f"## 📊 Performance Metrics (Homepage)\n\n"
+            body += f"| Metric | Value | Status |\n"
+            body += f"|--------|-------|--------|\n"
+            
+            # LCP
+            lcp_status = '🟢 Good' if self.performance_metrics['lcp'] < 2500 else '🟡 Needs Improvement' if self.performance_metrics['lcp'] < 4000 else '🔴 Poor'
+            body += f"| Largest Contentful Paint (LCP) | {self._format_time(self.performance_metrics['lcp'])} | {lcp_status} |\n"
+            
+            # TBT
+            tbt_status = '🟢 Good' if self.performance_metrics['tbt'] < 200 else '🟡 Needs Improvement' if self.performance_metrics['tbt'] < 600 else '🔴 Poor'
+            body += f"| Total Blocking Time (TBT) | {self._format_time(self.performance_metrics['tbt'])} | {tbt_status} |\n"
+            
+            # CLS
+            cls_status = '🟢 Good' if self.performance_metrics['cls'] < 0.1 else '🟡 Needs Improvement' if self.performance_metrics['cls'] < 0.25 else '🔴 Poor'
+            body += f"| Cumulative Layout Shift (CLS) | {self.performance_metrics['cls']} | {cls_status} |\n"
+            
+            # TTFB
+            ttfb_status = '🟢 Good' if self.performance_metrics['ttfb'] < 800 else '🔴 Slow'
+            body += f"| Time to First Byte (TTFB) | {self._format_time(self.performance_metrics['ttfb'])} | {ttfb_status} |\n"
+            
+            # FCP
+            fcp_status = '🟢 Good' if self.performance_metrics['fcp'] < 1800 else '🔴 Slow'
+            body += f"| First Contentful Paint (FCP) | {self._format_time(self.performance_metrics['fcp'])} | {fcp_status} |\n"
+            
+            # Load time
+            body += f"| Fully Loaded | {self._format_time(self.performance_metrics['load_event_end'])} | - |\n"
+            
+            body += f"\n"
+            
+            # Performance Issues
+            if self.performance_issues:
+                body += f"### ⚠️ Performance Issues\n\n"
+                for issue in self.performance_issues:
+                    icon = '🔴' if issue['severity'] == 'high' else '🟡'
+                    body += f"- {icon} **{issue['title']}**: {issue['description']}\n"
+                body += f"\n"
         
         # SEO Issues Section
         if pages_with_issues:
@@ -309,6 +585,10 @@ class FullSEOChecker:
         body += f"### Language Attribute\n"
         body += f"- Helps search engines understand the page language\n"
         body += f"- Use `<html lang=\"en\">` or appropriate language code\n\n"
+        body += f"### Performance\n"
+        body += f"- LCP should be under 2.5 seconds\n"
+        body += f"- TBT should be under 200ms\n"
+        body += f"- CLS should be under 0.1\n\n"
         
         body += f"---\n"
         body += f"*Generated by Full SEO Checker on {time.strftime('%Y-%m-%d %H:%M:%S UTC')}*"
@@ -319,10 +599,15 @@ class FullSEOChecker:
             'Accept': 'application/vnd.github.v3+json'
         }
         
+        # Add performance label if there are performance issues
+        labels = ['seo', 'full-seo-audit']
+        if self.performance_issues:
+            labels.append('performance')
+        
         payload = {
             'title': title,
             'body': body,
-            'labels': ['seo', 'full-seo-audit']
+            'labels': labels
         }
         
         try:
@@ -341,6 +626,15 @@ class FullSEOChecker:
         print(f"Pages crawled: {len(self.visited_pages)}")
         print(f"Links checked: {len(self.checked_links)}")
         
+        # Report performance metrics
+        if self.performance_metrics:
+            print(f"\nPerformance Grade: {self.performance_grade} (Score: {self.performance_score}/100)")
+            print(f"  LCP: {self._format_time(self.performance_metrics['lcp'])}")
+            print(f"  TBT: {self._format_time(self.performance_metrics['tbt'])}")
+            print(f"  CLS: {self.performance_metrics['cls']}")
+            print(f"  TTFB: {self._format_time(self.performance_metrics['ttfb'])}")
+            print(f"  FCP: {self._format_time(self.performance_metrics['fcp'])}")
+        
         # Count SEO issues
         pages_with_seo_issues = 0
         for url, issues in self.seo_issues.items():
@@ -358,10 +652,21 @@ class FullSEOChecker:
             if has_issue:
                 pages_with_seo_issues += 1
         
-        print(f"Pages with SEO issues: {pages_with_seo_issues}")
+        print(f"\nPages with SEO issues: {pages_with_seo_issues}")
         print(f"Pages with broken links: {len(self.broken_links)}")
+        print(f"Performance issues: {len(self.performance_issues)}")
         
         has_issues = False
+        
+        # Report performance issues
+        if self.performance_issues:
+            print("\n" + "="*60)
+            print("PERFORMANCE ISSUES FOUND")
+            print("="*60)
+            for issue in self.performance_issues:
+                icon = '🔴' if issue['severity'] == 'high' else '🟡'
+                print(f"  {icon} {issue['title']}: {issue['description']}")
+            has_issues = True
         
         # Report SEO issues
         if pages_with_seo_issues > 0:
@@ -446,6 +751,7 @@ def main():
     
     checker = FullSEOChecker(WEBSITE_URL)
     checker.crawl_website()
+    checker.collect_performance_metrics()
     success = checker.report_results()
     
     if not success:
