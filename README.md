@@ -18,6 +18,14 @@ GitHub Action workflows that check websites for broken links, missing Open Graph
 - ✅ Passes if all pages have OG images
 - ❌ Fails if pages without OG images are detected
 
+### Sitemap Checker
+- 🗺️ Fetches and validates sitemap.xml
+- ✅ Checks all URLs in the sitemap for accessibility
+- 🔗 Validates nested sitemaps (sitemap index files)
+- 📝 Creates GitHub issues for broken URLs found in sitemap
+- ✅ Passes if all sitemap URLs are valid
+- ❌ Fails if broken URLs are detected
+
 ### Full SEO Checker
 - 🔍 Crawls entire websites to discover all pages
 - 🔗 Checks all links on each page for broken links (404, 500, etc.)
@@ -26,6 +34,7 @@ GitHub Action workflows that check websites for broken links, missing Open Graph
 - 📝 Checks for meta description tags (with length validation)
 - 🔗 Checks for canonical links
 - 🌐 Checks for language attributes
+- 🗺️ Validates sitemap.xml and compares with crawled pages
 - 📊 Creates a comprehensive GitHub issue with all SEO findings
 - ✅ Passes if no issues are found
 - ❌ Fails if any SEO issues or broken links are detected
@@ -88,6 +97,35 @@ The checker will:
 4. Check every page for OG image tags
 5. Report any pages missing OG images
 
+### Sitemap Checker
+
+#### Running the Workflow
+
+1. Go to the "Actions" tab in your repository
+2. Select "Check Sitemap" workflow
+3. Click "Run workflow"
+4. Enter the website URL (e.g., `https://example.com`)
+5. Click "Run workflow"
+
+The workflow will:
+- Fetch the sitemap.xml from the specified website
+- Parse the sitemap and any nested sitemaps (sitemap index files)
+- Validate all URLs found in the sitemap
+- Create a GitHub issue if any broken URLs are found
+- Pass (green) if all sitemap URLs are accessible
+- Fail (red) if broken URLs are detected
+
+#### Example
+
+Input: `https://example.com`
+
+The checker will:
+1. Fetch `https://example.com/sitemap.xml`
+2. Parse all URLs in the sitemap
+3. If it's a sitemap index, recursively process all nested sitemaps
+4. Check each URL for accessibility (validates HTTP status)
+5. Report any broken or inaccessible URLs
+
 ### Full SEO Checker
 
 #### Running the Workflow
@@ -106,6 +144,7 @@ The workflow will:
 - Check for meta description tags and validate their length (50-160 characters recommended)
 - Check for canonical links
 - Check for language attributes in HTML tags
+- Validate sitemap.xml and compare sitemap URLs with crawled pages
 - Create a comprehensive GitHub issue with all SEO findings grouped by category
 - Pass (green) if no issues are found
 - Fail (red) if any SEO issues or broken links are detected
@@ -123,7 +162,9 @@ The checker will:
 6. Check for `<meta name="description">` tag and validate length
 7. Check for `<link rel="canonical">` tag
 8. Check for `lang` attribute in `<html>` tag
-9. Generate a comprehensive report with all findings
+9. Fetch and validate sitemap.xml
+10. Compare sitemap URLs with crawled pages
+11. Generate a comprehensive report with all findings
 
 ## How It Works
 
@@ -146,6 +187,17 @@ The workflow uses a Python script that:
 4. Creates a GitHub issue listing all pages without OG images
 5. The issue includes a summary of pages checked and pages missing OG images
 
+### Sitemap Checker
+
+The workflow uses a Python script that:
+1. Fetches sitemap.xml from the website root
+2. Parses the sitemap XML file
+3. Detects if the sitemap is a sitemap index (containing nested sitemaps)
+4. Recursively processes all nested sitemaps
+5. Validates each URL found in the sitemap(s) by checking HTTP status
+6. Creates a GitHub issue if any broken URLs are found
+7. The issue includes details of all processed sitemaps and broken URLs
+
 ### Full SEO Checker
 
 The workflow uses a Python script that:
@@ -156,10 +208,13 @@ The workflow uses a Python script that:
 5. Checks each page for `<meta name="description">` tag and validates length (50-160 characters recommended)
 6. Checks each page for `<link rel="canonical">` tag
 7. Checks each page for `lang` attribute in `<html>` tag
-8. Creates a comprehensive GitHub issue with all findings grouped by:
-   - SEO issues (missing or improperly sized meta tags)
-   - Broken links (grouped by the page they were found on)
-9. Includes SEO best practices in the report
+8. Fetches and validates sitemap.xml (including nested sitemaps)
+9. Compares sitemap URLs with crawled pages to identify mismatches
+10. Creates a comprehensive GitHub issue with all findings grouped by:
+    - SEO issues (missing or improperly sized meta tags)
+    - Broken links (grouped by the page they were found on)
+    - Sitemap validation results and URL mismatches
+11. Includes SEO best practices in the report
 
 ## Requirements
 
@@ -179,6 +234,7 @@ All workflows have these default settings:
 To modify these, edit the constants in the respective Python scripts:
 - `scripts/check_links.py` for dead link checking
 - `scripts/check_og_images.py` for OG image checking
+- `scripts/check_sitemap.py` for sitemap checking
 - `scripts/check_full_seo.py` for full SEO checking
 
 ## Permissions
