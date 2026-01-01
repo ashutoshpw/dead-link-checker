@@ -6,6 +6,7 @@ Crawls a website and performs comprehensive SEO checks including:
 - OG images
 - Meta titles
 - Meta descriptions
+- Sitemap validation
 - Other on-page SEO elements
 """
 
@@ -17,6 +18,7 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 from collections import defaultdict
 import time
+import xml.etree.ElementTree as ET
 
 # Configuration
 WEBSITE_URL = os.environ.get('WEBSITE_URL', '')
@@ -25,6 +27,13 @@ GITHUB_REPOSITORY = os.environ.get('GITHUB_REPOSITORY', '')
 MAX_PAGES = 100  # Limit to prevent infinite crawling
 REQUEST_TIMEOUT = 10
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+MAX_URLS_IN_REPORT = 20  # Maximum number of URLs to display in GitHub issue
+MAX_URLS_IN_CONSOLE = 10  # Maximum number of URLs to display in console output
+
+# Sitemap namespaces
+SITEMAP_NS = {
+    'sm': 'http://www.sitemaps.org/schemas/sitemap/0.9'
+}
 
 
 class FullSEOChecker:
@@ -51,6 +60,10 @@ class FullSEOChecker:
         })
         self.broken_links = defaultdict(list)
         self.checked_links = {}
+        self.sitemap_urls = []
+        self.processed_sitemaps = set()
+        self.urls_in_sitemap_not_crawled = []
+        self.urls_crawled_not_in_sitemap = []
         self.session = requests.Session()
         self.session.headers.update({'User-Agent': USER_AGENT})
     
@@ -164,6 +177,106 @@ class FullSEOChecker:
             print(f"  Error fetching {url}: {e}")
             return [], None
     
+    def get_sitemap_url(self):
+        """Get the sitemap URL (try sitemap.xml)"""
+        return f"{self.base_url}/sitemap.xml"
+    
+    def fetch_sitemap(self, sitemap_url):
+        """Fetch a sitemap file"""
+        try:
+            print(f"  Fetching sitemap: {sitemap_url}")
+            response = self.session.get(sitemap_url, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            print(f"  Warning: Could not fetch sitemap {sitemap_url}: {e}")
+            return None
+    
+    def parse_sitemap_index(self, content):
+        """Parse a sitemap index file and return nested sitemap URLs"""
+        try:
+            root = ET.fromstring(content)
+            sitemap_urls = []
+            
+            # Check if this is a sitemap index
+            for sitemap in root.findall('sm:sitemap', SITEMAP_NS):
+                loc = sitemap.find('sm:loc', SITEMAP_NS)
+                if loc is not None and loc.text:
+                    sitemap_urls.append(loc.text.strip())
+            
+            return sitemap_urls
+        except Exception as e:
+            print(f"  Error parsing sitemap index: {e}")
+            return []
+    
+    def parse_sitemap_urls(self, content):
+        """Parse a sitemap file and return URLs"""
+        try:
+            root = ET.fromstring(content)
+            urls = []
+            
+            # Parse regular sitemap URLs
+            for url_elem in root.findall('sm:url', SITEMAP_NS):
+                loc = url_elem.find('sm:loc', SITEMAP_NS)
+                if loc is not None and loc.text:
+                    urls.append(loc.text.strip())
+            
+            return urls
+        except Exception as e:
+            print(f"  Error parsing sitemap URLs: {e}")
+            return []
+    
+    def process_sitemap(self, sitemap_url):
+        """Process a sitemap (handles both index and regular sitemaps)"""
+        if sitemap_url in self.processed_sitemaps:
+            return
+        
+        self.processed_sitemaps.add(sitemap_url)
+        content = self.fetch_sitemap(sitemap_url)
+        
+        if content is None:
+            return
+        
+        # Try to parse as sitemap index first
+        nested_sitemaps = self.parse_sitemap_index(content)
+        
+        if nested_sitemaps:
+            print(f"  Found {len(nested_sitemaps)} nested sitemap(s)")
+            for nested_sitemap_url in nested_sitemaps:
+                self.process_sitemap(nested_sitemap_url)
+        else:
+            # Parse as regular sitemap
+            urls = self.parse_sitemap_urls(content)
+            print(f"  Found {len(urls)} URL(s) in sitemap")
+            self.sitemap_urls.extend(urls)
+    
+    def check_sitemap(self):
+        """Check sitemap and compare with crawled pages"""
+        print("\n" + "="*60)
+        print("CHECKING SITEMAP")
+        print("="*60)
+        
+        sitemap_url = self.get_sitemap_url()
+        self.process_sitemap(sitemap_url)
+        
+        if not self.sitemap_urls:
+            print("Warning: No sitemap found or sitemap is empty")
+            return
+        
+        print(f"Total URLs found in sitemap: {len(self.sitemap_urls)}")
+        
+        # Normalize URLs for comparison
+        normalized_sitemap_urls = set(self.normalize_url(url) for url in self.sitemap_urls)
+        
+        # Find URLs in sitemap but not crawled
+        self.urls_in_sitemap_not_crawled = list(normalized_sitemap_urls - self.visited_pages)
+        
+        # Find URLs crawled but not in sitemap
+        self.urls_crawled_not_in_sitemap = list(self.visited_pages - normalized_sitemap_urls)
+        
+        print(f"URLs in sitemap not crawled: {len(self.urls_in_sitemap_not_crawled)}")
+        print(f"URLs crawled not in sitemap: {len(self.urls_crawled_not_in_sitemap)}")
+    
     def crawl_website(self):
         """Crawl the website and perform full SEO check"""
         pages_to_visit = [self.base_url]
@@ -225,7 +338,12 @@ class FullSEOChecker:
         
         total_broken = sum(len(links) for links in self.broken_links.values())
         
-        if not pages_with_issues and not self.broken_links:
+        has_sitemap_issues = (
+            len(self.urls_in_sitemap_not_crawled) > 0 or 
+            len(self.urls_crawled_not_in_sitemap) > 0
+        )
+        
+        if not pages_with_issues and not self.broken_links and not has_sitemap_issues:
             return
         
         title = f"SEO Issues Found on {self.base_url}"
@@ -234,8 +352,13 @@ class FullSEOChecker:
         body += f"**Website:** {self.base_url}\n"
         body += f"**Pages checked:** {len(self.visited_pages)}\n"
         body += f"**Pages with SEO issues:** {len(pages_with_issues)}\n"
-        body += f"**Total broken links:** {total_broken}\n\n"
-        body += f"---\n\n"
+        body += f"**Total broken links:** {total_broken}\n"
+        
+        if self.sitemap_urls:
+            body += f"**Sitemap URLs found:** {len(self.sitemap_urls)}\n"
+            body += f"**Sitemap mismatches:** {len(self.urls_in_sitemap_not_crawled) + len(self.urls_crawled_not_in_sitemap)}\n"
+        
+        body += f"\n---\n\n"
         
         # SEO Issues Section
         if pages_with_issues:
@@ -289,6 +412,33 @@ class FullSEOChecker:
                 
                 body += f"\n"
         
+        # Sitemap Section
+        if self.sitemap_urls:
+            body += f"## 🗺️ Sitemap Validation\n\n"
+            body += f"**Total URLs in sitemap:** {len(self.sitemap_urls)}\n"
+            body += f"**Sitemaps processed:** {len(self.processed_sitemaps)}\n\n"
+            
+            if self.urls_in_sitemap_not_crawled:
+                body += f"### URLs in Sitemap but Not Found During Crawl ({len(self.urls_in_sitemap_not_crawled)})\n\n"
+                body += f"These URLs are listed in the sitemap but were not discovered during website crawling:\n\n"
+                for url in sorted(self.urls_in_sitemap_not_crawled)[:MAX_URLS_IN_REPORT]:
+                    body += f"- {url}\n"
+                if len(self.urls_in_sitemap_not_crawled) > MAX_URLS_IN_REPORT:
+                    body += f"\n*...and {len(self.urls_in_sitemap_not_crawled) - MAX_URLS_IN_REPORT} more*\n"
+                body += f"\n"
+            
+            if self.urls_crawled_not_in_sitemap:
+                body += f"### URLs Crawled but Not in Sitemap ({len(self.urls_crawled_not_in_sitemap)})\n\n"
+                body += f"These URLs were found during website crawling but are missing from the sitemap:\n\n"
+                for url in sorted(self.urls_crawled_not_in_sitemap)[:MAX_URLS_IN_REPORT]:
+                    body += f"- {url}\n"
+                if len(self.urls_crawled_not_in_sitemap) > MAX_URLS_IN_REPORT:
+                    body += f"\n*...and {len(self.urls_crawled_not_in_sitemap) - MAX_URLS_IN_REPORT} more*\n"
+                body += f"\n"
+            
+            if not self.urls_in_sitemap_not_crawled and not self.urls_crawled_not_in_sitemap:
+                body += f"✅ All sitemap URLs match the crawled pages!\n\n"
+        
         # SEO Best Practices Section
         body += f"---\n\n"
         body += f"## 📋 SEO Best Practices\n\n"
@@ -309,6 +459,11 @@ class FullSEOChecker:
         body += f"### Language Attribute\n"
         body += f"- Helps search engines understand the page language\n"
         body += f"- Use `<html lang=\"en\">` or appropriate language code\n\n"
+        body += f"### Sitemaps\n"
+        body += f"- Should include all important pages on the website\n"
+        body += f"- Must be accessible at `/sitemap.xml`\n"
+        body += f"- Should match the pages actually available on the site\n"
+        body += f"- Can use sitemap index files for large websites\n\n"
         
         body += f"---\n"
         body += f"*Generated by Full SEO Checker on {time.strftime('%Y-%m-%d %H:%M:%S UTC')}*"
@@ -415,6 +570,29 @@ class FullSEOChecker:
             
             has_issues = True
         
+        # Report sitemap issues
+        if self.sitemap_urls:
+            if self.urls_in_sitemap_not_crawled or self.urls_crawled_not_in_sitemap:
+                print("\n" + "="*60)
+                print("SITEMAP MISMATCHES FOUND")
+                print("="*60)
+                
+                if self.urls_in_sitemap_not_crawled:
+                    print(f"\nURLs in sitemap but not crawled ({len(self.urls_in_sitemap_not_crawled)}):")
+                    for url in sorted(self.urls_in_sitemap_not_crawled)[:MAX_URLS_IN_CONSOLE]:
+                        print(f"  - {url}")
+                    if len(self.urls_in_sitemap_not_crawled) > MAX_URLS_IN_CONSOLE:
+                        print(f"  ...and {len(self.urls_in_sitemap_not_crawled) - MAX_URLS_IN_CONSOLE} more")
+                
+                if self.urls_crawled_not_in_sitemap:
+                    print(f"\nURLs crawled but not in sitemap ({len(self.urls_crawled_not_in_sitemap)}):")
+                    for url in sorted(self.urls_crawled_not_in_sitemap)[:MAX_URLS_IN_CONSOLE]:
+                        print(f"  - {url}")
+                    if len(self.urls_crawled_not_in_sitemap) > MAX_URLS_IN_CONSOLE:
+                        print(f"  ...and {len(self.urls_crawled_not_in_sitemap) - MAX_URLS_IN_CONSOLE} more")
+                
+                has_issues = True
+        
         # Create GitHub issue
         if has_issues:
             self.create_github_issue()
@@ -446,6 +624,7 @@ def main():
     
     checker = FullSEOChecker(WEBSITE_URL)
     checker.crawl_website()
+    checker.check_sitemap()
     success = checker.report_results()
     
     if not success:
