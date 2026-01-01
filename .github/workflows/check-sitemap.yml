@@ -1,0 +1,45 @@
+name: Check Sitemap
+
+on:
+  workflow_dispatch:
+    inputs:
+      website_url:
+        description: 'Website URL to check sitemap (e.g., https://example.com)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-sitemap:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run sitemap checker
+        id: sitemap_checker
+        env:
+          WEBSITE_URL: ${{ github.event.inputs.website_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/check_sitemap.py
+      
+      - name: Check for broken sitemap URLs
+        if: failure()
+        run: |
+          echo "Broken URLs were found in sitemap. An issue has been created."
+          exit 1
