@@ -1,6 +1,6 @@
 # Dead Link Checker & SEO Checker
 
-GitHub Action workflows that check websites for broken links, missing Open Graph images, and comprehensive SEO issues, automatically creating issues when problems are found.
+GitHub Action workflows that check websites for broken links, missing Open Graph images, comprehensive SEO issues, and performance metrics, automatically creating issues when problems are found.
 
 ## Features
 
@@ -34,10 +34,22 @@ GitHub Action workflows that check websites for broken links, missing Open Graph
 - 📝 Checks for meta description tags (with length validation)
 - 🔗 Checks for canonical links
 - 🌐 Checks for language attributes
-- 🗺️ Validates sitemap.xml and compares with crawled pages
-- 📊 Creates a comprehensive GitHub issue with all SEO findings
+- 📊 Captures Core Web Vitals (LCP, TBT, CLS) for homepage
+- ⏱️ Measures timing metrics (TTFB, FCP, fully loaded time)
+- 📝 Creates a comprehensive GitHub issue with all SEO and performance findings
 - ✅ Passes if no issues are found
-- ❌ Fails if any SEO issues or broken links are detected
+- ❌ Fails if any SEO issues, broken links, or performance issues are detected
+
+### Performance Metric Tracker
+- 🚀 Loads webpage in a real Chromium browser via Playwright
+- 📊 Captures Core Web Vitals (LCP, TBT, CLS)
+- ⏱️ Measures timing metrics (TTFB, FCP, TTI, fully loaded time)
+- 🌐 Analyzes all network requests and resource loading
+- 📈 Generates a waterfall chart showing resource timing
+- 🔍 Evaluates performance best practices (compression, caching, image optimization)
+- 📝 Creates a comprehensive GitHub issue with performance grade (A-F) and recommendations
+- ✅ Passes if performance grade is C or better
+- ❌ Fails if performance grade is D or F
 
 ## Usage
 
@@ -166,6 +178,62 @@ The checker will:
 10. Compare sitemap URLs with crawled pages
 11. Generate a comprehensive report with all findings
 
+### Performance Metric Tracker
+
+#### Running the Workflow
+
+1. Go to the "Actions" tab in your repository
+2. Select "Check Performance" workflow
+3. Click "Run workflow"
+4. Enter the website URL (e.g., `https://example.com`)
+5. Click "Run workflow"
+
+The workflow will:
+- Load the webpage in a headless Chromium browser
+- Capture Core Web Vitals (LCP, TBT, CLS)
+- Measure timing metrics (TTFB, FCP, TTI, fully loaded time)
+- Analyze all network requests for waterfall chart
+- Evaluate performance against best practices
+- Create a comprehensive GitHub issue with performance grade and recommendations
+- Pass (green) if performance grade is C or better
+- Fail (red) if performance grade is D or F
+
+#### Example
+
+Input: `https://example.com`
+
+The checker will:
+1. Launch a headless Chromium browser
+2. Navigate to `https://example.com`
+3. Capture all resource requests and their timing
+4. Measure Core Web Vitals using Performance Observer API
+5. Analyze page size, request count, compression, caching
+6. Calculate a performance grade (A-F)
+7. Generate a waterfall chart showing resource loading timeline
+8. Create a GitHub issue with the complete performance report
+
+#### Metrics Measured
+
+**Core Web Vitals:**
+- **Largest Contentful Paint (LCP)** — How quickly the main content becomes visible (Good: < 2.5s)
+- **Total Blocking Time (TBT)** — How long the page is unresponsive during load (Good: < 200ms)
+- **Cumulative Layout Shift (CLS)** — Visual stability during load (Good: < 0.1)
+
+**Timing Metrics:**
+- Time to First Byte (TTFB)
+- First Contentful Paint (FCP)
+- Time to Interactive (TTI)
+- DOM Content Loaded
+- Fully Loaded Time
+
+**Analysis:**
+- Total page size and request count
+- Resource breakdown by type
+- Third-party script impact
+- Compression (Gzip/Brotli) usage
+- Cache header presence
+- Large image detection
+
 ## How It Works
 
 ### Dead Link Checker
@@ -216,6 +284,28 @@ The workflow uses a Python script that:
     - Sitemap validation results and URL mismatches
 11. Includes SEO best practices in the report
 
+### Performance Metric Tracker
+
+The workflow uses a Python script with Playwright that:
+1. Launches a headless Chromium browser
+2. Intercepts all network requests to capture resource timing
+3. Navigates to the target URL and waits for network idle
+4. Collects Core Web Vitals using the Performance Observer API:
+   - LCP (Largest Contentful Paint)
+   - TBT (Total Blocking Time) - calculated from Long Tasks
+   - CLS (Cumulative Layout Shift)
+5. Collects navigation timing data:
+   - TTFB, FCP, TTI, DOM events, connection timing
+6. Analyzes resources for:
+   - Total size and request count
+   - Resource type breakdown
+   - Third-party script impact
+   - Compression and caching
+   - Large images
+7. Calculates a performance grade (A-F) based on all metrics
+8. Generates an ASCII waterfall chart
+9. Creates a comprehensive GitHub issue with all findings and recommendations
+
 ## Requirements
 
 - Python 3.11+
@@ -223,10 +313,13 @@ The workflow uses a Python script that:
   - requests
   - beautifulsoup4
   - urllib3
+  - playwright
 
 ## Configuration
 
-All workflows have these default settings:
+### Python Scripts
+
+All Python-based workflows have these default settings:
 - Maximum pages to crawl: 100 (prevents infinite crawling)
 - Request timeout: 10 seconds
 - Delay between requests: 0.1 seconds (respectful crawling)
@@ -236,6 +329,20 @@ To modify these, edit the constants in the respective Python scripts:
 - `scripts/check_og_images.py` for OG image checking
 - `scripts/check_sitemap.py` for sitemap checking
 - `scripts/check_full_seo.py` for full SEO checking
+- `scripts/check_performance.py` for performance checking
+
+### Performance Metric Tracker
+
+The performance tracker has these default settings:
+- Page load timeout: 60 seconds
+- Viewport: 1920x1080
+
+Performance grade thresholds (based on Google's recommendations):
+- **LCP:** Good < 2500ms, Needs Improvement < 4000ms, Poor >= 4000ms
+- **TBT:** Good < 200ms, Needs Improvement < 600ms, Poor >= 600ms
+- **CLS:** Good < 0.1, Needs Improvement < 0.25, Poor >= 0.25
+
+To modify these, edit the constants in `scripts/check_performance.py`.
 
 ## Permissions
 
