@@ -7,10 +7,8 @@ Checks sitemap.xml for validity, validates all URLs, and checks nested sitemaps.
 import os
 import sys
 import requests
-from urllib.parse import urljoin, urlparse
-from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
-from collections import defaultdict
 import time
 
 # Configuration
