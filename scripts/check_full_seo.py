@@ -433,6 +433,16 @@ class FullSEOChecker:
             return f"{ms}ms"
         return f"{ms / 1000:.2f}s"
     
+    def _get_grade_color(self):
+        """Get emoji color for performance grade"""
+        if self.performance_score >= 80:
+            return '🟢'
+        elif self.performance_score >= 70:
+            return '🟡'
+        elif self.performance_score >= 60:
+            return '🟠'
+        return '🔴'
+    
     def create_github_issue(self):
         """Create a comprehensive GitHub issue for all SEO issues found"""
         if not GITHUB_TOKEN or not GITHUB_REPOSITORY:
@@ -469,8 +479,7 @@ class FullSEOChecker:
         body += f"**Pages with SEO issues:** {len(pages_with_issues)}\n"
         body += f"**Total broken links:** {total_broken}\n"
         if self.performance_metrics:
-            grade_color = '🟢' if self.performance_score >= 80 else '🟡' if self.performance_score >= 70 else '🟠' if self.performance_score >= 60 else '🔴'
-            body += f"**Performance Grade:** {grade_color} {self.performance_grade} (Score: {self.performance_score}/100)\n"
+            body += f"**Performance Grade:** {self._get_grade_color()} {self.performance_grade} (Score: {self.performance_score}/100)\n"
         body += f"\n"
         body += f"---\n\n"
         
