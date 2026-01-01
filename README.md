@@ -342,7 +342,7 @@ Performance grade thresholds (based on Google's recommendations):
 - **TBT:** Good < 200ms, Needs Improvement < 600ms, Poor >= 600ms
 - **CLS:** Good < 0.1, Needs Improvement < 0.25, Poor >= 0.25
 
-To modify these, edit the constants in `scripts/check_performance.js`.
+To modify these, edit the constants in `scripts/check_performance.py`.
 
 ## Permissions
 

@@ -14,7 +14,6 @@ Crawls a website and performs comprehensive SEO checks including:
 import os
 import sys
 import json
-import math
 import requests
 from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
@@ -453,17 +452,50 @@ class FullSEOChecker:
             # Calculate performance grade
             self._calculate_performance_grade()
             
-            # Close browser
-            page.close()
-            context.close()
-            browser.close()
-            playwright.stop()
+            # Close browser with robust error handling
+            try:
+                page.close()
+            except Exception as e:
+                print(f"Warning: Failed to close page: {e}")
+            try:
+                context.close()
+            except Exception as e:
+                print(f"Warning: Failed to close context: {e}")
+            try:
+                browser.close()
+            except Exception as e:
+                print(f"Warning: Failed to close browser: {e}")
+            try:
+                playwright.stop()
+            except Exception as e:
+                print(f"Warning: Failed to stop Playwright: {e}")
             
             print(f"Performance metrics collected - Grade: {self.performance_grade} (Score: {self.performance_score}/100)")
             
         except Exception as e:
             print(f"Error collecting performance metrics: {e}")
             self.performance_metrics = {}
+            # Attempt cleanup of any initialized resources
+            try:
+                if 'page' in dir() and page:
+                    page.close()
+            except Exception:
+                pass
+            try:
+                if 'context' in dir() and context:
+                    context.close()
+            except Exception:
+                pass
+            try:
+                if 'browser' in dir() and browser:
+                    browser.close()
+            except Exception:
+                pass
+            try:
+                if 'playwright' in dir() and playwright:
+                    playwright.stop()
+            except Exception:
+                pass
     
     def _calculate_performance_grade(self):
         """Calculate performance grade based on Core Web Vitals"""

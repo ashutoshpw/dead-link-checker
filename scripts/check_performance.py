@@ -7,7 +7,6 @@ Creates a GitHub issue with the performance report.
 
 import os
 import sys
-import json
 import time
 import math
 import requests
@@ -87,7 +86,11 @@ class PerformanceTracker:
                 body = response.body()
                 size = len(body)
             except Exception:
-                size = int(headers.get('content-length', 0))
+                content_length = headers.get('content-length')
+                try:
+                    size = int(content_length) if content_length is not None else 0
+                except (ValueError, TypeError):
+                    size = 0
             
             self.resources.append({
                 'url': url,
@@ -103,6 +106,9 @@ class PerformanceTracker:
                 'content_encoding': headers.get('content-encoding', 'none'),
                 'is_third_party': self._is_third_party(url)
             })
+            
+            # Clean up processed request to prevent memory accumulation
+            del self.request_start_times[url]
     
     def _is_third_party(self, resource_url):
         """Check if a URL is from a third-party domain"""
@@ -559,11 +565,14 @@ class PerformanceTracker:
     
     def _format_bytes(self, bytes_val):
         """Format bytes to human-readable string"""
-        if bytes_val == 0:
+        # Treat non-positive values as 0 bytes to avoid math domain errors
+        if bytes_val <= 0:
             return '0 Bytes'
         k = 1024
         sizes = ['Bytes', 'KB', 'MB', 'GB']
         i = int(math.floor(math.log(bytes_val) / math.log(k)))
+        # Cap the index to the available range of size units
+        i = min(i, len(sizes) - 1)
         return f"{round(bytes_val / (k ** i), 2)} {sizes[i]}"
     
     def _format_time(self, ms):
@@ -824,13 +833,25 @@ class PerformanceTracker:
     def close(self):
         """Clean up resources"""
         if self.page:
-            self.page.close()
+            try:
+                self.page.close()
+            except Exception as e:
+                print(f"Warning: Failed to close page: {e}")
         if self.context:
-            self.context.close()
+            try:
+                self.context.close()
+            except Exception as e:
+                print(f"Warning: Failed to close context: {e}")
         if self.browser:
-            self.browser.close()
-        if hasattr(self, 'playwright'):
-            self.playwright.stop()
+            try:
+                self.browser.close()
+            except Exception as e:
+                print(f"Warning: Failed to close browser: {e}")
+        if hasattr(self, 'playwright') and self.playwright:
+            try:
+                self.playwright.stop()
+            except Exception as e:
+                print(f"Warning: Failed to stop Playwright: {e}")
 
 
 def main():
@@ -864,7 +885,10 @@ def main():
             print('=' * 60)
     except Exception as e:
         print(f"Error: {e}")
-        tracker.close()
+        try:
+            tracker.close()
+        except Exception as cleanup_error:
+            print(f"Error during cleanup: {cleanup_error}")
         sys.exit(1)
 
 
