@@ -27,6 +27,8 @@ GITHUB_REPOSITORY = os.environ.get('GITHUB_REPOSITORY', '')
 MAX_PAGES = 100  # Limit to prevent infinite crawling
 REQUEST_TIMEOUT = 10
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+MAX_URLS_IN_REPORT = 20  # Maximum number of URLs to display in GitHub issue
+MAX_URLS_IN_CONSOLE = 10  # Maximum number of URLs to display in console output
 
 # Sitemap namespaces
 SITEMAP_NS = {
@@ -419,19 +421,19 @@ class FullSEOChecker:
             if self.urls_in_sitemap_not_crawled:
                 body += f"### URLs in Sitemap but Not Found During Crawl ({len(self.urls_in_sitemap_not_crawled)})\n\n"
                 body += f"These URLs are listed in the sitemap but were not discovered during website crawling:\n\n"
-                for url in sorted(self.urls_in_sitemap_not_crawled)[:20]:  # Limit to first 20
+                for url in sorted(self.urls_in_sitemap_not_crawled)[:MAX_URLS_IN_REPORT]:
                     body += f"- {url}\n"
-                if len(self.urls_in_sitemap_not_crawled) > 20:
-                    body += f"\n*...and {len(self.urls_in_sitemap_not_crawled) - 20} more*\n"
+                if len(self.urls_in_sitemap_not_crawled) > MAX_URLS_IN_REPORT:
+                    body += f"\n*...and {len(self.urls_in_sitemap_not_crawled) - MAX_URLS_IN_REPORT} more*\n"
                 body += f"\n"
             
             if self.urls_crawled_not_in_sitemap:
                 body += f"### URLs Crawled but Not in Sitemap ({len(self.urls_crawled_not_in_sitemap)})\n\n"
                 body += f"These URLs were found during website crawling but are missing from the sitemap:\n\n"
-                for url in sorted(self.urls_crawled_not_in_sitemap)[:20]:  # Limit to first 20
+                for url in sorted(self.urls_crawled_not_in_sitemap)[:MAX_URLS_IN_REPORT]:
                     body += f"- {url}\n"
-                if len(self.urls_crawled_not_in_sitemap) > 20:
-                    body += f"\n*...and {len(self.urls_crawled_not_in_sitemap) - 20} more*\n"
+                if len(self.urls_crawled_not_in_sitemap) > MAX_URLS_IN_REPORT:
+                    body += f"\n*...and {len(self.urls_crawled_not_in_sitemap) - MAX_URLS_IN_REPORT} more*\n"
                 body += f"\n"
             
             if not self.urls_in_sitemap_not_crawled and not self.urls_crawled_not_in_sitemap:
@@ -577,17 +579,17 @@ class FullSEOChecker:
                 
                 if self.urls_in_sitemap_not_crawled:
                     print(f"\nURLs in sitemap but not crawled ({len(self.urls_in_sitemap_not_crawled)}):")
-                    for url in sorted(self.urls_in_sitemap_not_crawled)[:10]:
+                    for url in sorted(self.urls_in_sitemap_not_crawled)[:MAX_URLS_IN_CONSOLE]:
                         print(f"  - {url}")
-                    if len(self.urls_in_sitemap_not_crawled) > 10:
-                        print(f"  ...and {len(self.urls_in_sitemap_not_crawled) - 10} more")
+                    if len(self.urls_in_sitemap_not_crawled) > MAX_URLS_IN_CONSOLE:
+                        print(f"  ...and {len(self.urls_in_sitemap_not_crawled) - MAX_URLS_IN_CONSOLE} more")
                 
                 if self.urls_crawled_not_in_sitemap:
                     print(f"\nURLs crawled but not in sitemap ({len(self.urls_crawled_not_in_sitemap)}):")
-                    for url in sorted(self.urls_crawled_not_in_sitemap)[:10]:
+                    for url in sorted(self.urls_crawled_not_in_sitemap)[:MAX_URLS_IN_CONSOLE]:
                         print(f"  - {url}")
-                    if len(self.urls_crawled_not_in_sitemap) > 10:
-                        print(f"  ...and {len(self.urls_crawled_not_in_sitemap) - 10} more")
+                    if len(self.urls_crawled_not_in_sitemap) > MAX_URLS_IN_CONSOLE:
+                        print(f"  ...and {len(self.urls_crawled_not_in_sitemap) - MAX_URLS_IN_CONSOLE} more")
                 
                 has_issues = True
         

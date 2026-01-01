@@ -36,7 +36,7 @@ class SitemapChecker:
         self.session.headers.update({'User-Agent': USER_AGENT})
     
     def get_sitemap_url(self):
-        """Get the sitemap URL (try sitemap.xml)"""
+        """Get the sitemap URL at /sitemap.xml"""
         return f"{self.base_url}/sitemap.xml"
     
     def fetch_sitemap(self, sitemap_url):
