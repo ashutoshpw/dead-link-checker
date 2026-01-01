@@ -15,6 +15,8 @@ const WEBSITE_URL = process.env.WEBSITE_URL || '';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 const GITHUB_REPOSITORY = process.env.GITHUB_REPOSITORY || '';
 const REQUEST_TIMEOUT = 60000; // 60 seconds for page load
+const NETWORK_IDLE_DELAY = 2000; // 2 seconds to wait after network idle
+const OBSERVER_TIMEOUT = 500; // Timeout for Performance Observer collection
 
 /**
  * Performance Metric Tracker class
@@ -35,7 +37,7 @@ class PerformanceTracker {
      */
     async init() {
         this.browser = await puppeteer.launch({
-            headless: 'new',
+            headless: true,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -125,7 +127,7 @@ class PerformanceTracker {
             });
 
             // Wait a bit more for any late-loading resources
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, NETWORK_IDLE_DELAY));
 
             const loadTime = Date.now() - startTime;
             console.log(`Page loaded in ${loadTime}ms`);
@@ -179,7 +181,7 @@ class PerformanceTracker {
         });
 
         // Get LCP using PerformanceObserver
-        const lcp = await this.page.evaluate(() => {
+        const lcp = await this.page.evaluate((timeout) => {
             return new Promise((resolve) => {
                 let lcpValue = 0;
                 const observer = new PerformanceObserver((list) => {
@@ -201,12 +203,12 @@ class PerformanceTracker {
                 setTimeout(() => {
                     observer.disconnect();
                     resolve(lcpValue);
-                }, 500);
+                }, timeout);
             });
-        });
+        }, OBSERVER_TIMEOUT);
 
         // Get CLS using PerformanceObserver
-        const cls = await this.page.evaluate(() => {
+        const cls = await this.page.evaluate((timeout) => {
             return new Promise((resolve) => {
                 let clsValue = 0;
                 const observer = new PerformanceObserver((list) => {
@@ -226,12 +228,12 @@ class PerformanceTracker {
                 setTimeout(() => {
                     observer.disconnect();
                     resolve(clsValue);
-                }, 500);
+                }, timeout);
             });
-        });
+        }, OBSERVER_TIMEOUT);
 
         // Get Long Tasks for TBT calculation
-        const longTasks = await this.page.evaluate(() => {
+        const longTasks = await this.page.evaluate((timeout) => {
             return new Promise((resolve) => {
                 const tasks = [];
                 const observer = new PerformanceObserver((list) => {
@@ -252,9 +254,9 @@ class PerformanceTracker {
                 setTimeout(() => {
                     observer.disconnect();
                     resolve(tasks);
-                }, 500);
+                }, timeout);
             });
-        });
+        }, OBSERVER_TIMEOUT);
 
         // Calculate TBT (Total Blocking Time) - sum of blocking time for each long task
         // A task is "blocking" if it takes more than 50ms, and the blocking portion is duration - 50ms
