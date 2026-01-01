@@ -1,0 +1,45 @@
+name: Check Performance
+
+on:
+  workflow_dispatch:
+    inputs:
+      website_url:
+        description: 'Website URL to check for performance (e.g., https://example.com)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-performance:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install dependencies
+        run: |
+          npm install
+      
+      - name: Run performance checker
+        id: performance_checker
+        env:
+          WEBSITE_URL: ${{ github.event.inputs.website_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          node scripts/check_performance.js
+      
+      - name: Check for performance issues
+        if: failure()
+        run: |
+          echo "Performance issues were found. An issue has been created."
+          exit 1
