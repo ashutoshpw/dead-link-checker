@@ -31,7 +31,7 @@ GitHub Action workflows that check websites for broken links, missing Open Graph
 - ❌ Fails if any SEO issues or broken links are detected
 
 ### Performance Metric Tracker
-- 🚀 Loads webpage in a real Chromium browser via Puppeteer
+- 🚀 Loads webpage in a real Chromium browser via Playwright
 - 📊 Captures Core Web Vitals (LCP, TBT, CLS)
 - ⏱️ Measures timing metrics (TTFB, FCP, TTI, fully loaded time)
 - 🌐 Analyzes all network requests and resource loading
@@ -230,7 +230,7 @@ The workflow uses a Python script that:
 
 ### Performance Metric Tracker
 
-The workflow uses a Node.js script with Puppeteer that:
+The workflow uses a Python script with Playwright that:
 1. Launches a headless Chromium browser
 2. Intercepts all network requests to capture resource timing
 3. Navigates to the target URL and waits for network idle
@@ -252,17 +252,12 @@ The workflow uses a Node.js script with Puppeteer that:
 
 ## Requirements
 
-### Python Scripts (Dead Link, OG Image, Full SEO Checker)
 - Python 3.11+
 - Dependencies listed in `requirements.txt`:
   - requests
   - beautifulsoup4
   - urllib3
-
-### Node.js Scripts (Performance Metric Tracker)
-- Node.js 20+
-- Dependencies listed in `package.json`:
-  - puppeteer
+  - playwright
 
 ## Configuration
 
@@ -277,6 +272,7 @@ To modify these, edit the constants in the respective Python scripts:
 - `scripts/check_links.py` for dead link checking
 - `scripts/check_og_images.py` for OG image checking
 - `scripts/check_full_seo.py` for full SEO checking
+- `scripts/check_performance.py` for performance checking
 
 ### Performance Metric Tracker
 
