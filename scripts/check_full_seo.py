@@ -306,8 +306,9 @@ class FullSEOChecker:
         """Check if a URL is a sitemap file"""
         parsed = urlparse(url)
         path = parsed.path.lower()
-        # Get the filename from the path
-        filename = path.split('/')[-1] if '/' in path else path
+        # Get the filename from the path (handles both '/sitemap.xml' and '/dir/sitemap.xml')
+        parts = path.split('/')
+        filename = parts[-1] if parts[-1] else (parts[-2] if len(parts) > 1 else '')
         # Check if it's an XML file that starts with 'sitemap'
         return filename.endswith('.xml') and filename.startswith('sitemap')
     
