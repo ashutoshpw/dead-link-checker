@@ -33,6 +33,8 @@ NETWORK_IDLE_DELAY = 2000  # 2 seconds to wait after network idle
 OBSERVER_TIMEOUT = 500  # Timeout for Performance Observer collection
 MAX_URLS_IN_REPORT = 20  # Maximum number of URLs to display in GitHub issue
 MAX_URLS_IN_CONSOLE = 10  # Maximum number of URLs to display in console output
+# Domains that return 403 due to requiring login but should not be considered broken
+TWITTER_X_DOMAINS = ['twitter.com', 'www.twitter.com', 'x.com', 'www.x.com']
 
 # Sitemap namespaces
 SITEMAP_NS = {
@@ -154,7 +156,7 @@ class FullSEOChecker:
             # Check if this is a Twitter/X.com link with 403 status
             # These sites return 403 because they require login, but aren't actually broken
             parsed_url = urlparse(url)
-            is_twitter_or_x = parsed_url.netloc in ['twitter.com', 'www.twitter.com', 'x.com', 'www.x.com']
+            is_twitter_or_x = parsed_url.netloc in TWITTER_X_DOMAINS
             
             is_broken = status_code >= 400
             # Don't consider Twitter/X.com links with 403 as broken
