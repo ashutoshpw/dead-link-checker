@@ -304,11 +304,11 @@ class FullSEOChecker:
     
     def is_sitemap_file(self, url):
         """Check if a URL is a sitemap file"""
+        import os
         parsed = urlparse(url)
         path = parsed.path.lower()
-        # Get the filename from the path (handles both '/sitemap.xml' and '/dir/sitemap.xml')
-        parts = path.split('/')
-        filename = parts[-1] if parts[-1] else (parts[-2] if len(parts) > 1 else '')
+        # Get the filename using os.path.basename
+        filename = os.path.basename(path)
         # Check if it's an XML file that starts with 'sitemap'
         return filename.endswith('.xml') and filename.startswith('sitemap')
     
@@ -328,15 +328,20 @@ class FullSEOChecker:
         print(f"Total URLs found in sitemap: {len(self.sitemap_urls)}")
         
         # Filter out sitemap files from comparison (child sitemaps, sitemap indexes, etc.)
-        sitemap_files_filtered = [url for url in self.sitemap_urls if self.is_sitemap_file(url)]
+        # Do this once to avoid redundant processing
+        content_urls = []
+        sitemap_files_filtered = []
+        for url in self.sitemap_urls:
+            if self.is_sitemap_file(url):
+                sitemap_files_filtered.append(url)
+            else:
+                content_urls.append(url)
+        
         if sitemap_files_filtered:
             print(f"Filtering out {len(sitemap_files_filtered)} sitemap file(s) from comparison")
         
-        # Normalize URLs for comparison, excluding sitemap files themselves
-        normalized_sitemap_urls = set(
-            self.normalize_url(url) for url in self.sitemap_urls 
-            if not self.is_sitemap_file(url)
-        )
+        # Normalize content URLs for comparison
+        normalized_sitemap_urls = set(self.normalize_url(url) for url in content_urls)
         
         # Find URLs in sitemap but not crawled
         self.urls_in_sitemap_not_crawled = list(normalized_sitemap_urls - self.visited_pages)
