@@ -20,6 +20,8 @@ GITHUB_REPOSITORY = os.environ.get('GITHUB_REPOSITORY', '')
 MAX_PAGES = 100  # Limit to prevent infinite crawling
 REQUEST_TIMEOUT = 10
 USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+# Domains that return 403 due to requiring login but should not be considered broken
+TWITTER_X_DOMAINS = ['twitter.com', 'www.twitter.com', 'x.com', 'www.x.com']
 
 
 class LinkChecker:
@@ -76,7 +78,16 @@ class LinkChecker:
                 response = self.session.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
                 status_code = response.status_code
             
+            # Check if this is a Twitter/X.com link with 403 status
+            # These sites return 403 because they require login, but aren't actually broken
+            parsed_url = urlparse(url)
+            is_twitter_or_x = parsed_url.netloc in TWITTER_X_DOMAINS
+            
             is_broken = status_code >= 400
+            # Don't consider Twitter/X.com links with 403 as broken
+            if is_twitter_or_x and status_code == 403:
+                is_broken = False
+            
             self.checked_links[url] = (status_code, is_broken)
             
             # Add small delay to be respectful
