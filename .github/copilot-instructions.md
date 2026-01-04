@@ -75,8 +75,9 @@ The project uses these core libraries:
 
 When adding new dependencies:
 1. Add to `requirements.txt` with version constraint
-2. Use `>=` for minimum version (not `==` for exact version)
-3. Test that installation works: `pip install -r requirements.txt`
+2. Use `>=` for minimum version constraints (allows updates while ensuring minimum requirements)
+3. Consider using `==` for exact versions only when reproducible builds are critical
+4. Test that installation works: `pip install -r requirements.txt`
 
 ## GitHub Actions Workflows
 
@@ -89,8 +90,8 @@ All workflows follow this structure:
    - Checkout repository
    - Set up Python 3.11
    - Install dependencies from requirements.txt
-   - Run Python script with environment variables
-   - Fail workflow if issues are found (using `if: failure()`)
+   - Run Python script with environment variables (script exits with non-zero status on failure)
+   - Display message on failure (using `if: failure()` condition)
 
 ### Environment Variables
 Scripts receive these environment variables from workflows:
