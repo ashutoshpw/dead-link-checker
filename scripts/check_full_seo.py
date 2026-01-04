@@ -304,7 +304,6 @@ class FullSEOChecker:
     
     def is_sitemap_file(self, url):
         """Check if a URL is a sitemap file"""
-        import os
         parsed = urlparse(url)
         path = parsed.path.lower()
         # Get the filename using os.path.basename
