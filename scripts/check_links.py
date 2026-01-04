@@ -31,6 +31,8 @@ class LinkChecker:
         self.visited_pages = set()
         self.checked_links = {}
         self.broken_links = defaultdict(list)
+        self.mailto_links = defaultdict(list)
+        self.tel_links = defaultdict(list)
         self.session = requests.Session()
         self.session.headers.update({'User-Agent': USER_AGENT})
     
@@ -67,9 +69,14 @@ class LinkChecker:
         """Check if a link should be skipped from checking"""
         parsed_url = urlparse(url)
         path = parsed_url.path
+        scheme = parsed_url.scheme
         
         # Skip CDN-CGI email protection links
         if path.startswith('/cdn-cgi/l/email-protection/'):
+            return True
+        
+        # Skip mailto: and tel: links (they will be tracked separately)
+        if scheme in ['mailto', 'tel']:
             return True
         
         return False
@@ -134,6 +141,17 @@ class LinkChecker:
                 continue
             
             for link in links:
+                # Check if it's a mailto: or tel: link
+                parsed_link = urlparse(link)
+                if parsed_link.scheme == 'mailto':
+                    self.mailto_links[current_url].append(link)
+                    print(f"  📧 mailto link found: {link}")
+                    continue
+                elif parsed_link.scheme == 'tel':
+                    self.tel_links[current_url].append(link)
+                    print(f"  📞 tel link found: {link}")
+                    continue
+                
                 # Check the link
                 status_code, is_broken = self.check_link(link)
                 
@@ -158,33 +176,77 @@ class LinkChecker:
             print("GitHub token or repository not configured, skipping issue creation")
             return
         
-        if not self.broken_links:
+        # Only create an issue if there are broken links, mailto links, or tel links
+        if not self.broken_links and not self.mailto_links and not self.tel_links:
             return
         
-        title = f"Broken links found on {self.base_url}"
+        title = f"Link report for {self.base_url}"
         
         # Count total broken links
         total_broken = sum(len(links) for links in self.broken_links.values())
+        total_mailto = sum(len(links) for links in self.mailto_links.values())
+        total_tel = sum(len(links) for links in self.tel_links.values())
         
-        body = f"## Broken Links Report\n\n"
+        body = f"## Link Report\n\n"
         body += f"**Website:** {self.base_url}\n"
         body += f"**Total broken links:** {total_broken}\n"
-        body += f"**Pages affected:** {len(self.broken_links)}\n\n"
+        body += f"**Total mailto: links:** {total_mailto}\n"
+        body += f"**Total tel: links:** {total_tel}\n\n"
         body += f"---\n\n"
         
-        # Group broken links by page
-        for page_url, broken_links_list in sorted(self.broken_links.items()):
-            body += f"### Page: {page_url}\n\n"
-            body += f"Found {len(broken_links_list)} broken link(s):\n\n"
+        # Show broken links first (if any)
+        if self.broken_links:
+            body += f"## Broken Links\n\n"
+            body += f"**Pages affected:** {len(self.broken_links)}\n\n"
             
-            for link_info in broken_links_list:
-                status = link_info['status_code']
-                url = link_info['url']
-                body += f"- `{url}` - Status Code: {status}\n"
+            # Group broken links by page
+            for page_url, broken_links_list in sorted(self.broken_links.items()):
+                body += f"### Page: {page_url}\n\n"
+                body += f"Found {len(broken_links_list)} broken link(s):\n\n"
+                
+                for link_info in broken_links_list:
+                    status = link_info['status_code']
+                    url = link_info['url']
+                    body += f"- `{url}` - Status Code: {status}\n"
+                
+                body += f"\n"
             
-            body += f"\n"
+            body += f"---\n\n"
         
-        body += f"---\n"
+        # Show mailto: links (if any)
+        if self.mailto_links:
+            body += f"## mailto: Links on Website\n\n"
+            body += f"These email links cannot be validated via HTTP requests, but are listed here for reference.\n\n"
+            body += f"**Pages with mailto: links:** {len(self.mailto_links)}\n\n"
+            
+            for page_url, mailto_links_list in sorted(self.mailto_links.items()):
+                body += f"### Page: {page_url}\n\n"
+                body += f"Found {len(mailto_links_list)} mailto: link(s):\n\n"
+                
+                for mailto_link in mailto_links_list:
+                    body += f"- `{mailto_link}`\n"
+                
+                body += f"\n"
+            
+            body += f"---\n\n"
+        
+        # Show tel: links (if any)
+        if self.tel_links:
+            body += f"## tel: Links on Website\n\n"
+            body += f"These telephone links cannot be validated via HTTP requests, but are listed here for reference.\n\n"
+            body += f"**Pages with tel: links:** {len(self.tel_links)}\n\n"
+            
+            for page_url, tel_links_list in sorted(self.tel_links.items()):
+                body += f"### Page: {page_url}\n\n"
+                body += f"Found {len(tel_links_list)} tel: link(s):\n\n"
+                
+                for tel_link in tel_links_list:
+                    body += f"- `{tel_link}`\n"
+                
+                body += f"\n"
+            
+            body += f"---\n\n"
+        
         body += f"*Detected by Dead Link Checker on {time.strftime('%Y-%m-%d %H:%M:%S UTC')}*"
         
         api_url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/issues"
@@ -193,10 +255,15 @@ class LinkChecker:
             'Accept': 'application/vnd.github.v3+json'
         }
         
+        # Determine the label based on whether there are broken links
+        labels = ['link-report']
+        if self.broken_links:
+            labels.append('broken-link')
+        
         payload = {
             'title': title,
             'body': body,
-            'labels': ['broken-link']
+            'labels': labels
         }
         
         try:
@@ -215,6 +282,8 @@ class LinkChecker:
         print(f"Pages crawled: {len(self.visited_pages)}")
         print(f"Links checked: {len(self.checked_links)}")
         print(f"Pages with broken links: {len(self.broken_links)}")
+        print(f"Pages with mailto: links: {len(self.mailto_links)}")
+        print(f"Pages with tel: links: {len(self.tel_links)}")
         
         if self.broken_links:
             print("\n" + "="*60)
@@ -225,10 +294,32 @@ class LinkChecker:
                 print(f"\n{page_url}:")
                 for link_info in broken_links_list:
                     print(f"  - {link_info['url']} (Status: {link_info['status_code']})")
+        
+        if self.mailto_links:
+            print("\n" + "="*60)
+            print("MAILTO: LINKS SUMMARY")
+            print("="*60)
             
-            # Create a single consolidated GitHub issue for all broken links
+            for page_url, mailto_links_list in self.mailto_links.items():
+                print(f"\n{page_url}:")
+                for mailto_link in mailto_links_list:
+                    print(f"  - {mailto_link}")
+        
+        if self.tel_links:
+            print("\n" + "="*60)
+            print("TEL: LINKS SUMMARY")
+            print("="*60)
+            
+            for page_url, tel_links_list in self.tel_links.items():
+                print(f"\n{page_url}:")
+                for tel_link in tel_links_list:
+                    print(f"  - {tel_link}")
+        
+        # Create a GitHub issue if there are broken links, mailto links, or tel links
+        if self.broken_links or self.mailto_links or self.tel_links:
             self.create_consolidated_github_issue()
-            
+        
+        if self.broken_links:
             print("\n" + "="*60)
             print("❌ FAILED: Broken links found!")
             print("="*60)
