@@ -308,8 +308,8 @@ class FullSEOChecker:
         path = parsed.path.lower()
         # Get the filename from the path
         filename = path.split('/')[-1] if '/' in path else path
-        # Check if it's an XML file that starts with 'sitemap' or is exactly 'sitemap.xml'
-        return filename.endswith('.xml') and (filename.startswith('sitemap') or filename == 'sitemap.xml')
+        # Check if it's an XML file that starts with 'sitemap'
+        return filename.endswith('.xml') and filename.startswith('sitemap')
     
     def check_sitemap(self):
         """Check sitemap and compare with crawled pages"""
