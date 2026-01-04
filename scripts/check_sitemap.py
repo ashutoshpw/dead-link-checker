@@ -124,7 +124,16 @@ class SitemapChecker:
                 response = self.session.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
                 status_code = response.status_code
             
+            # Check if this is a Twitter/X.com link with 403 status
+            # These sites return 403 because they require login, but aren't actually broken
+            parsed_url = urlparse(url)
+            is_twitter_or_x = parsed_url.netloc in ['twitter.com', 'www.twitter.com', 'x.com', 'www.x.com']
+            
             is_broken = status_code >= 400
+            # Don't consider Twitter/X.com links with 403 as broken
+            if is_twitter_or_x and status_code == 403:
+                is_broken = False
+            
             self.checked_urls[url] = (status_code, is_broken)
             
             # Add small delay to be respectful
