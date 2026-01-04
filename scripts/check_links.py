@@ -323,7 +323,7 @@ class LinkChecker:
         
         # Create a GitHub issue only if there are broken links
         # (mailto/tel links are included in the report as informational content)
-        if self.broken_links or self.mailto_links or self.tel_links:
+        if self.broken_links:
             self.create_consolidated_github_issue()
         
         if self.broken_links:
