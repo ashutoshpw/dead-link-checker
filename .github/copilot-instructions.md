@@ -68,10 +68,10 @@ All scripts use these standard configurations:
 ## Dependencies
 
 The project uses these core libraries:
-- **requests** (≥2.31.0) - HTTP requests
-- **beautifulsoup4** (≥4.12.0) - HTML parsing
-- **urllib3** (≥2.6.0) - URL utilities
-- **playwright** (≥1.40.0) - Browser automation for performance tracking
+- **requests** (>=2.31.0) - HTTP requests
+- **beautifulsoup4** (>=4.12.0) - HTML parsing
+- **urllib3** (>=2.6.0) - URL utilities
+- **playwright** (>=1.40.0) - Browser automation for performance tracking
 
 When adding new dependencies:
 1. Add to `requirements.txt` with version constraint
