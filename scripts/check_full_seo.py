@@ -138,10 +138,37 @@ class FullSEOChecker:
         else:
             issues['lang'] = html_tag.get('lang')
     
+    def should_skip_link(self, url):
+        """Check if a link should be skipped from checking"""
+        parsed_url = urlparse(url)
+        path = parsed_url.path
+        
+        # Skip CDN-CGI email protection links
+        if path.startswith('/cdn-cgi/l/email-protection/'):
+            return True
+        
+        return False
+    
+    def should_skip_url(self, url):
+        """Check if a URL should be skipped from checking"""
+        parsed_url = urlparse(url)
+        path = parsed_url.path
+        
+        # Skip CDN-CGI paths
+        if path.startswith('/cdn-cgi/'):
+            return True
+        
+        return False
+    
     def check_link(self, url):
         """Check if a link is broken"""
         if url in self.checked_links:
             return self.checked_links[url]
+        
+        # Skip links that should not be checked
+        if self.should_skip_link(url):
+            self.checked_links[url] = (200, False)
+            return 200, False
         
         try:
             # Use HEAD request first for efficiency
@@ -239,7 +266,12 @@ class FullSEOChecker:
             for url_elem in root.findall('sm:url', SITEMAP_NS):
                 loc = url_elem.find('sm:loc', SITEMAP_NS)
                 if loc is not None and loc.text:
-                    urls.append(loc.text.strip())
+                    url = loc.text.strip()
+                    # Skip URLs that should not be checked
+                    if not self.should_skip_url(url):
+                        urls.append(url)
+                    else:
+                        print(f"  Skipping CDN-CGI URL: {url}")
             
             return urls
         except Exception as e:

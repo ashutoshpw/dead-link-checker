@@ -69,6 +69,17 @@ class SitemapChecker:
             print(f"Error parsing sitemap index: {e}")
             return []
     
+    def should_skip_url(self, url):
+        """Check if a URL should be skipped from checking"""
+        parsed_url = urlparse(url)
+        path = parsed_url.path
+        
+        # Skip CDN-CGI paths
+        if path.startswith('/cdn-cgi/'):
+            return True
+        
+        return False
+    
     def parse_sitemap_urls(self, content):
         """Parse a sitemap file and return URLs"""
         try:
@@ -79,7 +90,12 @@ class SitemapChecker:
             for url_elem in root.findall('sm:url', SITEMAP_NS):
                 loc = url_elem.find('sm:loc', SITEMAP_NS)
                 if loc is not None and loc.text:
-                    urls.append(loc.text.strip())
+                    url = loc.text.strip()
+                    # Skip URLs that should not be checked
+                    if not self.should_skip_url(url):
+                        urls.append(url)
+                    else:
+                        print(f"  Skipping CDN-CGI URL: {url}")
             
             return urls
         except Exception as e:

@@ -63,10 +63,26 @@ class LinkChecker:
             print(f"Error fetching {url}: {e}")
             return [], None
     
+    def should_skip_link(self, url):
+        """Check if a link should be skipped from checking"""
+        parsed_url = urlparse(url)
+        path = parsed_url.path
+        
+        # Skip CDN-CGI email protection links
+        if path.startswith('/cdn-cgi/l/email-protection/'):
+            return True
+        
+        return False
+    
     def check_link(self, url):
         """Check if a link is broken"""
         if url in self.checked_links:
             return self.checked_links[url]
+        
+        # Skip links that should not be checked
+        if self.should_skip_link(url):
+            self.checked_links[url] = (200, False)
+            return 200, False
         
         try:
             # Use HEAD request first for efficiency
