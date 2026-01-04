@@ -69,7 +69,6 @@ class LinkChecker:
         """Check if a link should be skipped from checking"""
         parsed_url = urlparse(url)
         path = parsed_url.path
-        scheme = parsed_url.scheme
         
         # Skip CDN-CGI email protection links
         if path.startswith('/cdn-cgi/l/email-protection/'):
@@ -194,7 +193,7 @@ class LinkChecker:
         total_mailto = sum(len(links) for links in self.mailto_links.values())
         total_tel = sum(len(links) for links in self.tel_links.values())
         
-        body = f"## Link Report\n\n"
+        body = f"## Broken Links Report\n\n"
         body += f"**Website:** {self.base_url}\n"
         body += f"**Total broken links:** {total_broken}\n"
         
@@ -325,8 +324,6 @@ class LinkChecker:
         # (mailto/tel links are included in the report as informational content)
         if self.broken_links:
             self.create_consolidated_github_issue()
-        
-        if self.broken_links:
             print("\n" + "="*60)
             print("❌ FAILED: Broken links found!")
             print("="*60)
