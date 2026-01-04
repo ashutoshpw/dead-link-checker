@@ -63,6 +63,17 @@ class OGImageChecker:
             print(f"Error fetching {url}: {e}")
             return None, None
     
+    def should_skip_page(self, url):
+        """Check if a page should be skipped from crawling"""
+        parsed_url = urlparse(url)
+        path = parsed_url.path
+        
+        # Skip CDN-CGI paths (utility endpoints)
+        if path.startswith('/cdn-cgi/'):
+            return True
+        
+        return False
+    
     def get_links_from_page(self, url):
         """Extract all same-domain links from a page"""
         try:
@@ -75,7 +86,7 @@ class OGImageChecker:
             for tag in soup.find_all('a', href=True):
                 href = tag['href']
                 absolute_url = urljoin(url, href)
-                if self.is_same_domain(absolute_url):
+                if self.is_same_domain(absolute_url) and not self.should_skip_page(absolute_url):
                     links.append(absolute_url)
             
             return links
@@ -92,6 +103,12 @@ class OGImageChecker:
             normalized_url = self.normalize_url(current_url)
             
             if normalized_url in self.visited_pages:
+                continue
+            
+            # Skip CDN-CGI pages
+            if self.should_skip_page(current_url):
+                print(f"Skipping CDN-CGI page: {current_url}")
+                self.visited_pages.add(normalized_url)
                 continue
             
             print(f"Checking: {current_url}")
