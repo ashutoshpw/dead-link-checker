@@ -37,6 +37,7 @@ GitHub Action workflows that check websites for broken links, missing Open Graph
 - 📊 Captures Core Web Vitals (LCP, TBT, CLS) for homepage
 - ⏱️ Measures timing metrics (TTFB, FCP, fully loaded time)
 - 📝 Creates a comprehensive GitHub issue with all SEO and performance findings
+- 🔗 **Optional webhook support**: Send results to a webhook URL instead of creating a GitHub issue
 - ✅ Passes if no issues are found
 - ❌ Fails if any SEO issues, broken links, or performance issues are detected
 
@@ -146,7 +147,8 @@ The checker will:
 2. Select "Check Full SEO" workflow
 3. Click "Run workflow"
 4. Enter the website URL (e.g., `https://example.com`)
-5. Click "Run workflow"
+5. **Optional**: Enter a webhook URL to send results instead of creating a GitHub issue
+6. Click "Run workflow"
 
 The workflow will:
 - Crawl the specified website
@@ -157,7 +159,8 @@ The workflow will:
 - Check for canonical links
 - Check for language attributes in HTML tags
 - Validate sitemap.xml and compare sitemap URLs with crawled pages
-- Create a comprehensive GitHub issue with all SEO findings grouped by category
+- **If webhook URL is provided**: Send results as JSON to the webhook URL
+- **If webhook URL is NOT provided**: Create a comprehensive GitHub issue with all SEO findings grouped by category
 - Pass (green) if no issues are found
 - Fail (red) if any SEO issues or broken links are detected
 
@@ -283,6 +286,70 @@ The workflow uses a Python script that:
     - Broken links (grouped by the page they were found on)
     - Sitemap validation results and URL mismatches
 11. Includes SEO best practices in the report
+12. **If webhook URL is provided**: Sends results as JSON to the webhook instead of creating a GitHub issue
+
+#### Webhook Payload Format
+
+When a webhook URL is provided, the Full SEO Checker sends a JSON payload with the following structure:
+
+```json
+{
+  "website_url": "https://example.com",
+  "timestamp": "2026-01-05 12:30:45 UTC",
+  "summary": {
+    "pages_checked": 25,
+    "pages_with_seo_issues": 3,
+    "total_broken_links": 2,
+    "sitemap_urls_found": 30,
+    "sitemap_mismatches": 1
+  },
+  "performance": {
+    "grade": "A",
+    "score": 95,
+    "metrics": {
+      "lcp": 2000,
+      "tbt": 150,
+      "cls": 0.05,
+      "ttfb": 600,
+      "fcp": 1200,
+      "dom_content_loaded": 1500,
+      "load_event_end": 2500
+    },
+    "issues": []
+  },
+  "seo_issues": [
+    {
+      "url": "https://example.com/page1",
+      "issues": [
+        {
+          "type": "missing_og_image",
+          "severity": "medium"
+        },
+        {
+          "type": "title_too_short",
+          "severity": "medium",
+          "value": "Page"
+        }
+      ]
+    }
+  ],
+  "broken_links": [
+    {
+      "page_url": "https://example.com/page1",
+      "broken_url": "https://example.com/broken",
+      "status_code": 404
+    }
+  ],
+  "sitemap": {
+    "total_urls": 30,
+    "sitemaps_processed": 1,
+    "urls_in_sitemap_not_crawled": [],
+    "urls_crawled_not_in_sitemap": ["https://example.com/new-page"]
+  }
+}
+```
+
+The webhook will receive a POST request with `Content-Type: application/json` header.
 
 ### Performance Metric Tracker
 

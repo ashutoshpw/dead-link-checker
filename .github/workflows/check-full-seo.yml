@@ -7,6 +7,10 @@ on:
         description: 'Website URL to check for full SEO (e.g., https://example.com)'
         required: true
         type: string
+      webhook_url:
+        description: 'Webhook URL to send results (optional - if set, no GitHub issue will be created)'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -52,6 +56,7 @@ jobs:
         id: full_seo_checker
         env:
           WEBSITE_URL: ${{ github.event.inputs.website_url }}
+          WEBHOOK_URL: ${{ github.event.inputs.webhook_url }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
