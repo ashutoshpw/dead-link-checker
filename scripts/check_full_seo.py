@@ -654,6 +654,24 @@ class FullSEOChecker:
             return '🟠'
         return '🔴'
     
+    def _has_seo_issues(self, issues):
+        """Check if a page has any SEO issues"""
+        return (
+            issues['missing_og_image'] or 
+            issues['missing_title'] or 
+            issues['missing_description'] or
+            issues['missing_canonical'] or
+            issues['missing_lang'] or
+            issues['title_too_short'] or
+            issues['title_too_long'] or
+            issues['description_too_short'] or
+            issues['description_too_long']
+        )
+    
+    def _count_total_broken_links(self):
+        """Count total broken links across all pages"""
+        return sum(len(links) for links in self.broken_links.values())
+    
     def create_github_issue(self):
         """Create a comprehensive GitHub issue for all SEO issues found"""
         if not GITHUB_TOKEN or not GITHUB_REPOSITORY:
@@ -663,21 +681,8 @@ class FullSEOChecker:
         # Count issues
         pages_with_issues = []
         for url, issues in self.seo_issues.items():
-            has_issue = (
-                issues['missing_og_image'] or 
-                issues['missing_title'] or 
-                issues['missing_description'] or
-                issues['missing_canonical'] or
-                issues['missing_lang'] or
-                issues['title_too_short'] or
-                issues['title_too_long'] or
-                issues['description_too_short'] or
-                issues['description_too_long']
-            )
-            if has_issue:
+            if self._has_seo_issues(issues):
                 pages_with_issues.append((url, issues))
-        
-        total_broken = sum(len(links) for links in self.broken_links.values())
         
         has_sitemap_issues = (
             len(self.urls_in_sitemap_not_crawled) > 0 or 
@@ -721,7 +726,7 @@ class FullSEOChecker:
         body += f"**Website:** {self.base_url}\n"
         body += f"**Pages checked:** {len(self.visited_pages)}\n"
         body += f"**Pages with SEO issues:** {len(pages_with_issues)}\n"
-        body += f"**Total broken links:** {sum(len(links) for links in self.broken_links.values())}\n"
+        body += f"**Total broken links:** {self._count_total_broken_links()}\n"
         
         if self.sitemap_urls:
             body += f"**Sitemap URLs found:** {len(self.sitemap_urls)}\n"
@@ -889,18 +894,7 @@ class FullSEOChecker:
         seo_issues_list = []
         
         for url, issues in self.seo_issues.items():
-            has_issue = (
-                issues['missing_og_image'] or 
-                issues['missing_title'] or 
-                issues['missing_description'] or
-                issues['missing_canonical'] or
-                issues['missing_lang'] or
-                issues['title_too_short'] or
-                issues['title_too_long'] or
-                issues['description_too_short'] or
-                issues['description_too_long']
-            )
-            if has_issue:
+            if self._has_seo_issues(issues):
                 pages_with_issues.append((url, issues))
                 
                 # Create detailed issue list for this page
@@ -1015,18 +1009,7 @@ class FullSEOChecker:
         # Count SEO issues
         pages_with_seo_issues = 0
         for url, issues in self.seo_issues.items():
-            has_issue = (
-                issues['missing_og_image'] or 
-                issues['missing_title'] or 
-                issues['missing_description'] or
-                issues['missing_canonical'] or
-                issues['missing_lang'] or
-                issues['title_too_short'] or
-                issues['title_too_long'] or
-                issues['description_too_short'] or
-                issues['description_too_long']
-            )
-            if has_issue:
+            if self._has_seo_issues(issues):
                 pages_with_seo_issues += 1
         
         print(f"\nPages with SEO issues: {pages_with_seo_issues}")
@@ -1151,6 +1134,8 @@ class FullSEOChecker:
                 print("✅ SUCCESS: No SEO issues or broken links found!")
                 if webhook_success:
                     print("Results sent to webhook.")
+                else:
+                    print("⚠️  Warning: Failed to send results to webhook.")
                 print("="*60)
             else:
                 print("\n" + "="*60)
