@@ -144,8 +144,8 @@ class FullSEOChecker:
         parsed_url = urlparse(url)
         path = parsed_url.path
         
-        # Skip CDN-CGI email protection links
-        if path.startswith('/cdn-cgi/l/email-protection/'):
+        # Skip all CDN-CGI links (Cloudflare features that only work in real browsers)
+        if path.startswith('/cdn-cgi'):
             return True
         
         return False
