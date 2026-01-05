@@ -145,7 +145,7 @@ class FullSEOChecker:
         path = parsed_url.path
         
         # Skip all CDN-CGI links (Cloudflare features that only work in real browsers)
-        if path.startswith('/cdn-cgi'):
+        if path == '/cdn-cgi' or path.startswith('/cdn-cgi/'):
             return True
         
         return False
