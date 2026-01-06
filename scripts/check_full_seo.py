@@ -78,6 +78,9 @@ class FullSEOChecker:
         self.performance_grade = 'A'
         self.performance_score = 100
         self.performance_issues = []
+        # Track titles for duplicate detection
+        self.titles_map = defaultdict(list)
+        self.duplicate_titles = {}
     
     def normalize_url(self, url):
         """Normalize URL for comparison"""
@@ -108,6 +111,8 @@ class FullSEOChecker:
         else:
             title_text = title_tag.string.strip()
             issues['title'] = title_text
+            # Track title for duplicate detection
+            self.titles_map[title_text].append(url)
             if len(title_text) < 30:
                 issues['title_too_short'] = True
             elif len(title_text) > 60:
@@ -351,6 +356,23 @@ class FullSEOChecker:
         
         print(f"URLs in sitemap not crawled: {len(self.urls_in_sitemap_not_crawled)}")
         print(f"URLs crawled not in sitemap: {len(self.urls_crawled_not_in_sitemap)}")
+    
+    def check_duplicate_titles(self):
+        """Check for duplicate titles across pages"""
+        print("\n" + "="*60)
+        print("CHECKING FOR DUPLICATE TITLES")
+        print("="*60)
+        
+        # Find titles that appear on multiple pages
+        for title, urls in self.titles_map.items():
+            if len(urls) > 1:
+                self.duplicate_titles[title] = sorted(urls)
+                print(f"Duplicate title found: '{title}' on {len(urls)} pages")
+        
+        if not self.duplicate_titles:
+            print("No duplicate titles found")
+        else:
+            print(f"Total duplicate titles: {len(self.duplicate_titles)}")
     
     def crawl_website(self):
         """Crawl the website and perform full SEO check"""
@@ -689,7 +711,7 @@ class FullSEOChecker:
             len(self.urls_crawled_not_in_sitemap) > 0
         )
         
-        if not pages_with_issues and not self.broken_links and not has_sitemap_issues:
+        if not pages_with_issues and not self.broken_links and not has_sitemap_issues and not self.duplicate_titles:
             return
         
         title = f"SEO Issues Found on {self.base_url}"
@@ -727,6 +749,7 @@ class FullSEOChecker:
         body += f"**Pages checked:** {len(self.visited_pages)}\n"
         body += f"**Pages with SEO issues:** {len(pages_with_issues)}\n"
         body += f"**Total broken links:** {self._count_total_broken_links()}\n"
+        body += f"**Duplicate titles:** {len(self.duplicate_titles)}\n"
         
         if self.sitemap_urls:
             body += f"**Sitemap URLs found:** {len(self.sitemap_urls)}\n"
@@ -810,6 +833,18 @@ class FullSEOChecker:
                 
                 body += f"\n"
         
+        # Duplicate Titles Section
+        if self.duplicate_titles:
+            body += f"## 🔄 Duplicate Titles\n\n"
+            body += f"Found {len(self.duplicate_titles)} duplicate title(s). Each title should be unique for SEO best practices.\n\n"
+            
+            for title, urls in sorted(self.duplicate_titles.items()):
+                body += f"### Title: \"{title}\"\n\n"
+                body += f"This title appears on {len(urls)} page(s):\n\n"
+                for url in urls:
+                    body += f"- {url}\n"
+                body += f"\n"
+        
         # Broken Links Section
         if self.broken_links:
             body += f"## 🔗 Broken Links\n\n"
@@ -858,7 +893,8 @@ class FullSEOChecker:
         body += f"### Title Tags\n"
         body += f"- Should be 30-60 characters long\n"
         body += f"- Must be unique for each page\n"
-        body += f"- Should accurately describe the page content\n\n"
+        body += f"- Should accurately describe the page content\n"
+        body += f"- **Avoid duplicate titles** across different pages\n\n"
         body += f"### Meta Descriptions\n"
         body += f"- Should be 50-160 characters long\n"
         body += f"- Must be unique for each page\n"
@@ -937,6 +973,15 @@ class FullSEOChecker:
                     'status_code': link_info['status_code']
                 })
         
+        # Format duplicate titles
+        duplicate_titles_list = []
+        for title, urls in self.duplicate_titles.items():
+            duplicate_titles_list.append({
+                'title': title,
+                'urls': urls,
+                'count': len(urls)
+            })
+        
         # Build payload
         payload = {
             'website_url': self.base_url,
@@ -945,6 +990,7 @@ class FullSEOChecker:
                 'pages_checked': len(self.visited_pages),
                 'pages_with_seo_issues': len(pages_with_issues),
                 'total_broken_links': len(broken_links_list),
+                'duplicate_titles': len(self.duplicate_titles),
                 'sitemap_urls_found': len(self.sitemap_urls) if self.sitemap_urls else 0,
                 'sitemap_mismatches': len(self.urls_in_sitemap_not_crawled) + len(self.urls_crawled_not_in_sitemap)
             },
@@ -956,6 +1002,7 @@ class FullSEOChecker:
             } if self.performance_metrics else None,
             'seo_issues': seo_issues_list,
             'broken_links': broken_links_list,
+            'duplicate_titles': duplicate_titles_list,
             'sitemap': {
                 'total_urls': len(self.sitemap_urls) if self.sitemap_urls else 0,
                 'sitemaps_processed': len(self.processed_sitemaps),
@@ -1015,6 +1062,7 @@ class FullSEOChecker:
         print(f"\nPages with SEO issues: {pages_with_seo_issues}")
         print(f"Pages with broken links: {len(self.broken_links)}")
         print(f"Performance issues: {len(self.performance_issues)}")
+        print(f"Duplicate titles: {len(self.duplicate_titles)}")
         
         has_issues = False
         
@@ -1077,6 +1125,19 @@ class FullSEOChecker:
                 print(f"\n{page_url}:")
                 for link_info in broken_links_list:
                     print(f"  - {link_info['url']} (Status: {link_info['status_code']})")
+            
+            has_issues = True
+        
+        # Report duplicate titles
+        if self.duplicate_titles:
+            print("\n" + "="*60)
+            print("DUPLICATE TITLES FOUND")
+            print("="*60)
+            
+            for title, urls in self.duplicate_titles.items():
+                print(f"\nTitle: '{title}' (appears on {len(urls)} pages)")
+                for url in urls:
+                    print(f"  - {url}")
             
             has_issues = True
         
@@ -1162,6 +1223,7 @@ def main():
     checker.crawl_website()
     checker.collect_performance_metrics()
     checker.check_sitemap()
+    checker.check_duplicate_titles()
     success = checker.report_results()
     
     if not success:
