@@ -31,6 +31,7 @@ GitHub Action workflows that check websites for broken links, missing Open Graph
 - 🔗 Checks all links on each page for broken links (404, 500, etc.)
 - 🖼️ Checks for Open Graph image tags
 - 📄 Checks for meta title tags (with length validation)
+- 🔄 **Detects duplicate titles across different pages**
 - 📝 Checks for meta description tags (with length validation)
 - 🔗 Checks for canonical links
 - 🌐 Checks for language attributes
@@ -276,17 +277,19 @@ The workflow uses a Python script that:
 2. Checks all links on each page for broken URLs (4xx or 5xx status codes)
 3. Checks each page for the `<meta property="og:image">` tag
 4. Checks each page for `<title>` tag and validates length (30-60 characters recommended)
-5. Checks each page for `<meta name="description">` tag and validates length (50-160 characters recommended)
-6. Checks each page for `<link rel="canonical">` tag
-7. Checks each page for `lang` attribute in `<html>` tag
-8. Fetches and validates sitemap.xml (including nested sitemaps)
-9. Compares sitemap URLs with crawled pages to identify mismatches
-10. Creates a comprehensive GitHub issue with all findings grouped by:
+5. **Detects duplicate titles across all pages to ensure each page has a unique title**
+6. Checks each page for `<meta name="description">` tag and validates length (50-160 characters recommended)
+7. Checks each page for `<link rel="canonical">` tag
+8. Checks each page for `lang` attribute in `<html>` tag
+9. Fetches and validates sitemap.xml (including nested sitemaps)
+10. Compares sitemap URLs with crawled pages to identify mismatches
+11. Creates a comprehensive GitHub issue with all findings grouped by:
     - SEO issues (missing or improperly sized meta tags)
+    - Duplicate titles (titles used on multiple pages)
     - Broken links (grouped by the page they were found on)
     - Sitemap validation results and URL mismatches
-11. Includes SEO best practices in the report
-12. **If webhook URL is provided**: Sends results as JSON to the webhook instead of creating a GitHub issue
+12. Includes SEO best practices in the report
+13. **If webhook URL is provided**: Sends results as JSON to the webhook instead of creating a GitHub issue
 
 #### Webhook Payload Format
 
@@ -300,6 +303,7 @@ When a webhook URL is provided, the Full SEO Checker sends a JSON payload with t
     "pages_checked": 25,
     "pages_with_seo_issues": 3,
     "total_broken_links": 2,
+    "duplicate_titles": 1,
     "sitemap_urls_found": 30,
     "sitemap_mismatches": 1
   },
@@ -338,6 +342,16 @@ When a webhook URL is provided, the Full SEO Checker sends a JSON payload with t
       "page_url": "https://example.com/page1",
       "broken_url": "https://example.com/broken",
       "status_code": 404
+    }
+  ],
+  "duplicate_titles": [
+    {
+      "title": "Contact Us",
+      "urls": [
+        "https://example.com/contact",
+        "https://example.com/support"
+      ],
+      "count": 2
     }
   ],
   "sitemap": {
