@@ -142,8 +142,42 @@ def main() -> int:
         print("\nWARNING: No .webm file found in output directory.")
         return 1
 
+    _write_summary(links, recordings)
     print("\nDone.")
     return 0
+
+
+def _write_summary(links: list[str], recordings: list[str]) -> None:
+    summary_path = os.environ.get('GITHUB_STEP_SUMMARY')
+    if not summary_path:
+        return
+
+    server = os.environ.get('GITHUB_SERVER_URL', 'https://github.com')
+    repo = os.environ.get('GITHUB_REPOSITORY', '')
+    run_id = os.environ.get('GITHUB_RUN_ID', '')
+    artifact_url = f"{server}/{repo}/actions/runs/{run_id}" if repo and run_id else None
+
+    lines = ["## 🎬 Walkthrough Recording", ""]
+    lines += [
+        "| | |",
+        "|---|---|",
+        f"| **Starting URL** | {WEBSITE_URL} |",
+        f"| **Links visited** | {len(links)} |",
+    ]
+    for i, link in enumerate(links, 1):
+        lines.append(f"| &nbsp;&nbsp;&nbsp;&nbsp;{i}. | {link} |")
+
+    total_kb = sum(
+        os.path.getsize(os.path.join(OUTPUT_DIR, r)) // 1024 for r in recordings
+    )
+    lines.append(f"| **Recording size** | {total_kb} KB |")
+    if artifact_url:
+        lines.append(f"| **Download** | [⬇️ walkthrough-video artifact]({artifact_url}) |")
+
+    lines += ["", "_Video recorded with Playwright (Chromium headless)_"]
+
+    with open(summary_path, 'a', encoding='utf-8') as f:
+        f.write('\n'.join(lines) + '\n')
 
 
 if __name__ == '__main__':

@@ -48,6 +48,9 @@ jobs:
           WEBSITE_URL: ${{ github.event.inputs.website_url }}
           MAX_LINKS: ${{ github.event.inputs.max_links }}
           OUTPUT_DIR: recordings
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
         run: python scripts/record_walkthrough.py
 
       - name: Upload recording
