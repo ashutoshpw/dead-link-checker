@@ -1,0 +1,52 @@
+name: Record Website Walkthrough
+
+on:
+  workflow_dispatch:
+    inputs:
+      website_url:
+        description: 'Website URL to record (e.g., https://example.com)'
+        required: true
+        type: string
+      max_links:
+        description: 'Number of top internal links to visit after the landing page (default: 5)'
+        required: false
+        default: '5'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browser
+        run: python -m playwright install --with-deps chromium
+
+      - name: Record walkthrough
+        env:
+          WEBSITE_URL: ${{ github.event.inputs.website_url }}
+          MAX_LINKS: ${{ github.event.inputs.max_links }}
+          OUTPUT_DIR: recordings
+        run: python scripts/record_walkthrough.py
+
+      - name: Upload recording
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walkthrough-video
+          path: recordings/
+          if-no-files-found: error
+          retention-days: 14
