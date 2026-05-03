@@ -30,6 +30,13 @@ DEVICE_LABELS = {
     'tablet':  'Tablet — iPad Pro 11 (834×1194)',
 }
 
+# (scroll_step_px, scroll_delay_ms) — smaller step + longer delay = slower scroll
+DEVICE_SCROLL = {
+    'desktop': (300, 120),
+    'mobile':  (60,  200),
+    'tablet':  (100, 160),
+}
+
 
 def is_recordable_link(href: str, base_origin: str) -> bool:
     if not href or href.startswith(('mailto:', 'tel:', 'javascript:', '#')):
@@ -64,7 +71,7 @@ def collect_internal_links(page, base_origin: str, limit: int) -> list[str]:
     return links
 
 
-def navigate(page, url: str, label: str) -> bool:
+def navigate(page, url: str, label: str, scroll_step: int = 300, scroll_delay: int = 120) -> bool:
     print(f"  → {label}: {url}")
     try:
         page.goto(url, wait_until='networkidle', timeout=NAV_TIMEOUT_MS)
@@ -75,22 +82,21 @@ def navigate(page, url: str, label: str) -> bool:
         except Exception as e:
             print(f"    FAILED: {e}")
             return False
-    # Scroll slowly so the video captures the full page
-    page.evaluate("""
-        () => new Promise(resolve => {
-            const step = 300;
-            const delay = 120;
+    page.evaluate(f"""
+        () => new Promise(resolve => {{
+            const step = {scroll_step};
+            const delay = {scroll_delay};
             let scrolled = 0;
-            const id = setInterval(() => {
+            const id = setInterval(() => {{
                 window.scrollBy(0, step);
                 scrolled += step;
-                if (scrolled >= document.body.scrollHeight) {
+                if (scrolled >= document.body.scrollHeight) {{
                     clearInterval(id);
                     window.scrollTo(0, 0);
                     resolve();
-                }
-            }, delay);
-        })
+                }}
+            }}, delay);
+        }})
     """)
     page.wait_for_timeout(WAIT_AFTER_NAV_MS)
     return True
@@ -107,6 +113,7 @@ def main() -> int:
         device_name = 'desktop'
 
     device_label = DEVICE_LABELS[device_name]
+    scroll_step, scroll_delay = DEVICE_SCROLL[device_name]
     print(f"Recording walkthrough of: {WEBSITE_URL}")
     print(f"Device: {device_label}")
     print(f"Max links to visit: {MAX_LINKS}")
@@ -133,7 +140,7 @@ def main() -> int:
         )
         page = context.new_page()
 
-        ok = navigate(page, WEBSITE_URL, "Landing page")
+        ok = navigate(page, WEBSITE_URL, "Landing page", scroll_step, scroll_delay)
         if not ok:
             context.close()
             browser.close()
@@ -147,7 +154,7 @@ def main() -> int:
 
         print()
         for i, link in enumerate(links, 1):
-            navigate(page, link, f"Link {i}/{len(links)}")
+            navigate(page, link, f"Link {i}/{len(links)}", scroll_step, scroll_delay)
 
         context.close()  # finalises the .webm file
         browser.close()
