@@ -12,13 +12,56 @@ on:
         required: false
         default: '5'
         type: string
+      record_desktop:
+        description: 'Record on Desktop (1280×720)'
+        required: false
+        default: 'true'
+        type: boolean
+      record_mobile:
+        description: 'Record on Mobile (iPhone 14, 390×844)'
+        required: false
+        default: 'false'
+        type: boolean
+      record_tablet:
+        description: 'Record on Tablet (iPad Pro 11, 834×1194)'
+        required: false
+        default: 'false'
+        type: boolean
 
 permissions:
   contents: read
 
 jobs:
-  record:
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build-matrix.outputs.matrix }}
+    steps:
+      - name: Build device matrix
+        id: build-matrix
+        env:
+          RECORD_DESKTOP: ${{ github.event.inputs.record_desktop }}
+          RECORD_MOBILE: ${{ github.event.inputs.record_mobile }}
+          RECORD_TABLET: ${{ github.event.inputs.record_tablet }}
+        run: |
+          devices=()
+          [ "$RECORD_DESKTOP" = "true" ] && devices+=("desktop")
+          [ "$RECORD_MOBILE"  = "true" ] && devices+=("mobile")
+          [ "$RECORD_TABLET"  = "true" ] && devices+=("tablet")
+          if [ ${#devices[@]} -eq 0 ]; then
+            echo "matrix=[]" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix=$(printf '%s\n' "${devices[@]}" | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+          fi
+
+  record:
+    needs: setup
+    if: needs.setup.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        device: ${{ fromJson(needs.setup.outputs.matrix) }}
+      fail-fast: false
 
     steps:
       - name: Checkout repository
@@ -47,6 +90,7 @@ jobs:
         env:
           WEBSITE_URL: ${{ github.event.inputs.website_url }}
           MAX_LINKS: ${{ github.event.inputs.max_links }}
+          DEVICE: ${{ matrix.device }}
           OUTPUT_DIR: recordings
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -57,7 +101,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: walkthrough-video
+          name: walkthrough-video-${{ matrix.device }}
           path: recordings/
           if-no-files-found: error
           retention-days: 14

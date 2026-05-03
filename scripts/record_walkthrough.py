@@ -14,10 +14,21 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 WEBSITE_URL = os.environ.get('WEBSITE_URL', '')
 MAX_LINKS = int(os.environ.get('MAX_LINKS', '5'))
 OUTPUT_DIR = os.environ.get('OUTPUT_DIR', 'recordings')
-VIEWPORT_WIDTH = int(os.environ.get('VIEWPORT_WIDTH', '1280'))
-VIEWPORT_HEIGHT = int(os.environ.get('VIEWPORT_HEIGHT', '720'))
 WAIT_AFTER_NAV_MS = int(os.environ.get('WAIT_AFTER_NAV_MS', '3000'))
 NAV_TIMEOUT_MS = 30_000
+
+# Built-in Playwright device descriptor keys, or a plain viewport dict for desktop
+DEVICE_PROFILES = {
+    'desktop': {'viewport': {'width': 1280, 'height': 720}},
+    'mobile':  'iPhone 14',
+    'tablet':  'iPad Pro 11',
+}
+
+DEVICE_LABELS = {
+    'desktop': 'Desktop (1280×720)',
+    'mobile':  'Mobile — iPhone 14 (390×844)',
+    'tablet':  'Tablet — iPad Pro 11 (834×1194)',
+}
 
 
 def is_recordable_link(href: str, base_origin: str) -> bool:
@@ -43,7 +54,6 @@ def collect_internal_links(page, base_origin: str, limit: int) -> list[str]:
     for href in hrefs:
         if not is_recordable_link(href, base_origin):
             continue
-        # Normalise: strip fragment
         clean = href.split('#')[0].rstrip('/')
         if clean in seen or clean == base_origin.rstrip('/'):
             continue
@@ -91,24 +101,38 @@ def main() -> int:
         print("ERROR: WEBSITE_URL environment variable is required.")
         return 1
 
+    device_name = os.environ.get('DEVICE', 'desktop').lower()
+    if device_name not in DEVICE_PROFILES:
+        print(f"WARNING: Unknown device '{device_name}', falling back to desktop.")
+        device_name = 'desktop'
+
+    device_label = DEVICE_LABELS[device_name]
+    print(f"Recording walkthrough of: {WEBSITE_URL}")
+    print(f"Device: {device_label}")
+    print(f"Max links to visit: {MAX_LINKS}")
+    print(f"Output dir: {OUTPUT_DIR}")
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     parsed_base = urlparse(WEBSITE_URL)
     base_origin = f"{parsed_base.scheme}://{parsed_base.netloc}"
 
-    print(f"Recording walkthrough of: {WEBSITE_URL}")
-    print(f"Max links to visit: {MAX_LINKS}")
-    print(f"Output dir: {OUTPUT_DIR}")
-
     with sync_playwright() as pw:
+        profile = DEVICE_PROFILES[device_name]
+        if isinstance(profile, str):
+            device_cfg = dict(pw.devices[profile])
+        else:
+            device_cfg = dict(profile)
+
+        viewport = device_cfg.get('viewport', {'width': 1280, 'height': 720})
+
         browser = pw.chromium.launch(headless=True)
         context = browser.new_context(
+            **device_cfg,
             record_video_dir=OUTPUT_DIR,
-            record_video_size={"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT},
-            viewport={"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT},
+            record_video_size={"width": viewport['width'], "height": viewport['height']},
         )
         page = context.new_page()
 
-        # Step 1: land on the input URL
         ok = navigate(page, WEBSITE_URL, "Landing page")
         if not ok:
             context.close()
@@ -116,13 +140,11 @@ def main() -> int:
             print("ERROR: Could not load the starting URL.")
             return 1
 
-        # Step 2: collect internal links from the landing page
         links = collect_internal_links(page, base_origin, MAX_LINKS)
         print(f"\nFound {len(links)} internal link(s) to visit:")
         for i, l in enumerate(links, 1):
             print(f"  {i}. {l}")
 
-        # Step 3: visit each link in the same page (same video context)
         print()
         for i, link in enumerate(links, 1):
             navigate(page, link, f"Link {i}/{len(links)}")
@@ -130,7 +152,6 @@ def main() -> int:
         context.close()  # finalises the .webm file
         browser.close()
 
-    # Discover what was written
     recordings = [f for f in os.listdir(OUTPUT_DIR) if f.endswith('.webm')]
     if recordings:
         print(f"\nRecording saved:")
@@ -142,12 +163,12 @@ def main() -> int:
         print("\nWARNING: No .webm file found in output directory.")
         return 1
 
-    _write_summary(links, recordings)
+    _write_summary(links, recordings, device_name, device_label)
     print("\nDone.")
     return 0
 
 
-def _write_summary(links: list[str], recordings: list[str]) -> None:
+def _write_summary(links: list[str], recordings: list[str], device_name: str, device_label: str) -> None:
     summary_path = os.environ.get('GITHUB_STEP_SUMMARY')
     if not summary_path:
         return
@@ -156,11 +177,13 @@ def _write_summary(links: list[str], recordings: list[str]) -> None:
     repo = os.environ.get('GITHUB_REPOSITORY', '')
     run_id = os.environ.get('GITHUB_RUN_ID', '')
     artifact_url = f"{server}/{repo}/actions/runs/{run_id}" if repo and run_id else None
+    artifact_name = f"walkthrough-video-{device_name}"
 
-    lines = ["## 🎬 Walkthrough Recording", ""]
+    lines = [f"## 🎬 Walkthrough Recording — {device_label}", ""]
     lines += [
         "| | |",
         "|---|---|",
+        f"| **Device** | {device_label} |",
         f"| **Starting URL** | {WEBSITE_URL} |",
         f"| **Links visited** | {len(links)} |",
     ]
@@ -172,7 +195,7 @@ def _write_summary(links: list[str], recordings: list[str]) -> None:
     )
     lines.append(f"| **Recording size** | {total_kb} KB |")
     if artifact_url:
-        lines.append(f"| **Download** | [⬇️ walkthrough-video artifact]({artifact_url}) |")
+        lines.append(f"| **Download** | [⬇️ {artifact_name}]({artifact_url}) |")
 
     lines += ["", "_Video recorded with Playwright (Chromium headless)_"]
 
