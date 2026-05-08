@@ -159,15 +159,25 @@ class FullSEOChecker:
         
         return False
     
+    NON_PAGE_EXTENSIONS = {
+        '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico',
+        '.pdf', '.zip', '.tar', '.gz', '.mp4', '.mp3', '.webm',
+        '.woff', '.woff2', '.ttf', '.eot', '.otf',
+        '.css', '.js', '.json', '.xml', '.txt', '.csv',
+    }
+
     def should_skip_url(self, url):
         """Check if a URL should be skipped from checking"""
         parsed_url = urlparse(url)
         path = parsed_url.path
-        
-        # Skip CDN-CGI paths
+
         if path.startswith('/cdn-cgi/'):
             return True
-        
+
+        ext = os.path.splitext(path)[1].lower()
+        if ext in self.NON_PAGE_EXTENSIONS:
+            return True
+
         return False
     
     def check_link(self, url):
@@ -409,7 +419,7 @@ class FullSEOChecker:
                     print(f"  ✗ Broken link: {link} (Status: {status_code})")
                 
                 # Add same-domain pages to crawl queue
-                if self.is_same_domain(link):
+                if self.is_same_domain(link) and not self.should_skip_url(link):
                     normalized_link = self.normalize_url(link)
                     if normalized_link not in self.visited_pages:
                         pages_to_visit.append(link)
@@ -719,7 +729,7 @@ class FullSEOChecker:
                 pages_with_issues.append((url, issues))
 
         schema_summary = self._get_schema_org_summary()
-        has_schema_issues = bool(schema_summary['pages_with_issues'])
+        has_schema_issues = bool(schema_summary['pages_with_issues']) or bool(schema_summary['pages_without_schema'])
         
         has_sitemap_issues = (
             len(self.urls_in_sitemap_not_crawled) > 0 or 
@@ -871,31 +881,42 @@ class FullSEOChecker:
         if self.schema_org_results:
             body += f"## 🧩 Schema.org Structured Data\n\n"
             body += f"**Pages with structured data:** {schema_summary['pages_with_schema']}\n"
+            body += f"**Pages missing structured data:** {len(schema_summary['pages_without_schema'])}\n"
             body += f"**Pages with structured data issues:** {len(schema_summary['pages_with_issues'])}\n"
             body += f"**JSON-LD blocks found:** {schema_summary['total_blocks']}\n"
             body += f"**Valid blocks:** {schema_summary['valid_blocks']}\n\n"
 
             if schema_summary['types_found']:
-                body += f"**Types found:** {', '.join(schema_summary['types_found'])}\n\n"
+                body += f"**Types found (site-wide):** {', '.join(schema_summary['types_found'])}\n\n"
+
+            body += f"<details>\n<summary><strong>Schema.org Markup Per Page ({len(self.schema_org_results)} pages)</strong></summary>\n\n"
+            body += f"| Page | Types Found |\n"
+            body += f"| --- | --- |\n"
+            for url in sorted(self.schema_org_results.keys()):
+                types = self.schema_org_results[url]['types_found']
+                types_str = ', '.join(types) if types else '*(none)*'
+                body += f"| {url} | {types_str} |\n"
+            body += f"\n</details>\n\n"
 
             if schema_summary['pages_with_issues']:
-                body += f"### Failing Structured Data Findings\n\n"
+                body += f"### ❌ Failing: Structured Data Validation Issues\n\n"
                 for url in schema_summary['pages_with_issues']:
                     result = self.schema_org_results[url]
-                    body += f"#### Page: {url}\n\n"
+                    body += f"<details>\n<summary><strong>{url}</strong></summary>\n\n"
                     for issue in result['issues']:
                         block_text = f" (block {issue['block_index']})" if 'block_index' in issue else ''
                         body += f"- ❌ **{issue['type']}**{block_text}: {issue['message']}\n"
-                    body += f"\n"
+                    body += f"\n</details>\n\n"
 
             if schema_summary['pages_without_schema']:
-                body += f"### Informational: Pages Without Structured Data ({len(schema_summary['pages_without_schema'])})\n\n"
-                body += f"These pages do not include Schema.org markup. This is reported for visibility only and does not fail the audit.\n\n"
+                body += f"### ❌ Failing: Pages Without Structured Data ({len(schema_summary['pages_without_schema'])})\n\n"
+                body += f"Every page must have at least one valid Schema.org markup block. The following pages have none:\n\n"
+                body += f"<details>\n<summary><strong>Show pages</strong></summary>\n\n"
                 for url in schema_summary['pages_without_schema'][:MAX_URLS_IN_REPORT]:
                     body += f"- {url}\n"
                 if len(schema_summary['pages_without_schema']) > MAX_URLS_IN_REPORT:
                     body += f"\n*...and {len(schema_summary['pages_without_schema']) - MAX_URLS_IN_REPORT} more*\n"
-                body += f"\n"
+                body += f"\n</details>\n\n"
 
         # Broken Links Section
         if self.broken_links:
@@ -963,6 +984,7 @@ class FullSEOChecker:
         body += f"### Schema.org Structured Data\n"
         body += f"- Prefer valid JSON-LD in `<script type=\"application/ld+json\">` blocks\n"
         body += f"- Each item should define `@context` and `@type`\n"
+        body += f"- Every page must have at least one valid Schema.org markup block\n"
         body += f"- Malformed JSON-LD or missing identity fields should be fixed\n\n"
         body += f"### Performance\n"
         body += f"- LCP should be under 2.5 seconds\n"
@@ -1051,6 +1073,7 @@ class FullSEOChecker:
                 'sitemap_urls_found': len(self.sitemap_urls) if self.sitemap_urls else 0,
                 'sitemap_mismatches': len(self.urls_in_sitemap_not_crawled) + len(self.urls_crawled_not_in_sitemap),
                 'pages_with_schema_org': schema_summary['pages_with_schema'],
+                'pages_without_schema_org': len(schema_summary['pages_without_schema']),
                 'pages_with_schema_org_issues': len(schema_summary['pages_with_issues']),
                 'schema_org_blocks_found': schema_summary['total_blocks']
             },
@@ -1073,6 +1096,13 @@ class FullSEOChecker:
                 },
                 'types_found': schema_summary['types_found'],
                 'type_counts': schema_summary['type_counts'],
+                'pages_schema_detail': [
+                    {
+                        'url': url,
+                        'types_found': self.schema_org_results[url]['types_found']
+                    }
+                    for url in sorted(self.schema_org_results.keys())
+                ],
                 'issues': [
                     {
                         'url': url,
@@ -1239,12 +1269,13 @@ class FullSEOChecker:
 
         if schema_summary['pages_without_schema']:
             print("\n" + "="*60)
-            print("PAGES WITHOUT SCHEMA.ORG")
+            print("PAGES MISSING SCHEMA.ORG (FAILING)")
             print("="*60)
             for url in schema_summary['pages_without_schema'][:MAX_URLS_IN_CONSOLE]:
                 print(f"  - {url}")
             if len(schema_summary['pages_without_schema']) > MAX_URLS_IN_CONSOLE:
                 print(f"  ...and {len(schema_summary['pages_without_schema']) - MAX_URLS_IN_CONSOLE} more")
+            has_issues = True
         
         # Report sitemap issues
         if self.sitemap_urls:

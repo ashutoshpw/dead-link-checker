@@ -39,8 +39,21 @@ class SchemaOrgChecker:
     def is_same_domain(self, url):
         return urlparse(url).netloc == self.domain
 
+    NON_PAGE_EXTENSIONS = {
+        '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico',
+        '.pdf', '.zip', '.tar', '.gz', '.mp4', '.mp3', '.webm',
+        '.woff', '.woff2', '.ttf', '.eot', '.otf',
+        '.css', '.js', '.json', '.xml', '.txt', '.csv',
+    }
+
     def should_skip_page(self, url):
-        return urlparse(url).path.startswith('/cdn-cgi/')
+        path = urlparse(url).path
+        if path.startswith('/cdn-cgi/'):
+            return True
+        ext = os.path.splitext(path)[1].lower()
+        if ext in self.NON_PAGE_EXTENSIONS:
+            return True
+        return False
 
     def inspect_page(self, url):
         try:
@@ -90,7 +103,7 @@ class SchemaOrgChecker:
             return
 
         summary = summarize_schema_results(self.schema_results)
-        if not summary['pages_with_issues']:
+        if not summary['pages_with_issues'] and not summary['pages_without_schema']:
             return
 
         title = f"Schema.org issues found on {self.base_url}"
@@ -120,31 +133,43 @@ class SchemaOrgChecker:
         body += f"**Website:** {self.base_url}\n"
         body += f"**Pages checked:** {len(self.visited_pages)}\n"
         body += f"**Pages with structured data:** {summary['pages_with_schema']}\n"
+        body += f"**Pages missing structured data:** {len(summary['pages_without_schema'])}\n"
         body += f"**Pages with structured data issues:** {len(summary['pages_with_issues'])}\n"
         body += f"**JSON-LD blocks found:** {summary['total_blocks']}\n"
         body += f"**Valid blocks:** {summary['valid_blocks']}\n\n"
 
         if summary['types_found']:
-            body += f"**Types found:** {', '.join(summary['types_found'])}\n\n"
+            body += f"**Types found (site-wide):** {', '.join(summary['types_found'])}\n\n"
 
-        body += "### Failing Findings\n\n"
-        for url in summary['pages_with_issues']:
-            body += f"#### Page: {url}\n\n"
-            for issue in self.schema_results[url]['issues']:
-                block_text = f" (block {issue['block_index']})" if 'block_index' in issue else ''
-                body += f"- **{issue['type']}**{block_text}: {issue['message']}\n"
-            body += "\n"
+        body += f"<details>\n<summary><strong>Schema.org Markup Per Page ({len(self.schema_results)} pages)</strong></summary>\n\n"
+        body += "| Page | Types Found |\n"
+        body += "| --- | --- |\n"
+        for url in sorted(self.schema_results.keys()):
+            types = self.schema_results[url]['types_found']
+            types_str = ', '.join(types) if types else '*(none)*'
+            body += f"| {url} | {types_str} |\n"
+        body += "\n</details>\n\n"
+
+        if summary['pages_with_issues']:
+            body += "### ❌ Failing: Structured Data Validation Issues\n\n"
+            for url in summary['pages_with_issues']:
+                body += f"<details>\n<summary><strong>{url}</strong></summary>\n\n"
+                for issue in self.schema_results[url]['issues']:
+                    block_text = f" (block {issue['block_index']})" if 'block_index' in issue else ''
+                    body += f"- **{issue['type']}**{block_text}: {issue['message']}\n"
+                body += "\n</details>\n\n"
 
         if summary['pages_without_schema']:
-            body += f"### Informational: Pages Without Structured Data ({len(summary['pages_without_schema'])})\n\n"
-            body += "These pages do not include Schema.org markup. They are listed for visibility only and do not fail this check.\n\n"
+            body += f"### ❌ Failing: Pages Without Structured Data ({len(summary['pages_without_schema'])})\n\n"
+            body += "Every page must have at least one valid Schema.org markup block. The following pages have none:\n\n"
+            body += "<details>\n<summary><strong>Show pages</strong></summary>\n\n"
             for url in summary['pages_without_schema']:
                 body += f"- {url}\n"
-            body += "\n"
+            body += "\n</details>\n\n"
 
         body += "### Notes\n\n"
         body += "- This checker validates JSON-LD only.\n"
-        body += "- Missing Schema.org markup does not fail the check.\n"
+        body += "- Every page must have at least one valid Schema.org markup block.\n"
         body += "- Malformed JSON-LD or missing `@context` / `@type` does fail the check.\n\n"
         body += "---\n"
         body += f"*Detected by Schema.org Checker on {time.strftime('%Y-%m-%d %H:%M:%S UTC')}*"
@@ -166,7 +191,9 @@ class SchemaOrgChecker:
             print(f"Types found: {', '.join(summary['types_found'])}")
 
         if summary['pages_without_schema']:
-            print("\nInformational pages without Schema.org:")
+            print("\n" + "=" * 60)
+            print("PAGES MISSING SCHEMA.ORG (FAILING)")
+            print("=" * 60)
             for url in summary['pages_without_schema'][:10]:
                 print(f"  - {url}")
             if len(summary['pages_without_schema']) > 10:
@@ -182,6 +209,7 @@ class SchemaOrgChecker:
                     block_text = f" (block {issue['block_index']})" if 'block_index' in issue else ''
                     print(f"  - {issue['type']}{block_text}: {issue['message']}")
 
+        if summary['pages_with_issues'] or summary['pages_without_schema']:
             self.create_github_issue()
             print("\n" + "=" * 60)
             print("❌ FAILED: Schema.org issues found!")
