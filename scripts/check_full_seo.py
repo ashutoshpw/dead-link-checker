@@ -21,6 +21,8 @@ from collections import defaultdict
 import time
 import xml.etree.ElementTree as ET
 
+from schema_org_utils import analyze_schema_org_from_soup, summarize_schema_results
+
 # Configuration
 WEBSITE_URL = os.environ.get('WEBSITE_URL', '')
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')
@@ -71,6 +73,7 @@ class FullSEOChecker:
         self.processed_sitemaps = set()
         self.urls_in_sitemap_not_crawled = []
         self.urls_crawled_not_in_sitemap = []
+        self.schema_org_results = {}
         self.session = requests.Session()
         self.session.headers.update({'User-Agent': USER_AGENT})
         # Performance metrics
@@ -96,6 +99,7 @@ class FullSEOChecker:
         """Check all SEO elements on a page"""
         issues = self.seo_issues[url]
         issues['url'] = url
+        self.schema_org_results[url] = analyze_schema_org_from_soup(soup)
         
         # Check OG image
         og_image = soup.find('meta', property='og:image')
@@ -689,6 +693,14 @@ class FullSEOChecker:
             issues['description_too_short'] or
             issues['description_too_long']
         )
+
+    def _has_schema_org_issues(self, result):
+        """Check if a page has failing Schema.org issues"""
+        return bool(result.get('issues'))
+
+    def _get_schema_org_summary(self):
+        """Build a normalized Schema.org summary for the current run."""
+        return summarize_schema_results(self.schema_org_results)
     
     def _count_total_broken_links(self):
         """Count total broken links across all pages"""
@@ -705,13 +717,16 @@ class FullSEOChecker:
         for url, issues in self.seo_issues.items():
             if self._has_seo_issues(issues):
                 pages_with_issues.append((url, issues))
+
+        schema_summary = self._get_schema_org_summary()
+        has_schema_issues = bool(schema_summary['pages_with_issues'])
         
         has_sitemap_issues = (
             len(self.urls_in_sitemap_not_crawled) > 0 or 
             len(self.urls_crawled_not_in_sitemap) > 0
         )
         
-        if not pages_with_issues and not self.broken_links and not has_sitemap_issues and not self.duplicate_titles:
+        if not pages_with_issues and not self.broken_links and not has_sitemap_issues and not self.duplicate_titles and not has_schema_issues:
             return
         
         title = f"SEO Issues Found on {self.base_url}"
@@ -727,6 +742,8 @@ class FullSEOChecker:
         labels = ['seo', 'full-seo-audit']
         if self.performance_issues:
             labels.append('performance')
+        if has_schema_issues:
+            labels.append('schema-org')
         
         payload = {
             'title': title,
@@ -744,12 +761,17 @@ class FullSEOChecker:
     
     def _format_github_issue_body(self, pages_with_issues):
         """Format the GitHub issue body"""
+        schema_summary = self._get_schema_org_summary()
+
         body = f"## Full SEO Audit Report\n\n"
         body += f"**Website:** {self.base_url}\n"
         body += f"**Pages checked:** {len(self.visited_pages)}\n"
         body += f"**Pages with SEO issues:** {len(pages_with_issues)}\n"
         body += f"**Total broken links:** {self._count_total_broken_links()}\n"
         body += f"**Duplicate titles:** {len(self.duplicate_titles)}\n"
+        body += f"**Pages with Schema.org:** {schema_summary['pages_with_schema']}\n"
+        body += f"**Pages with Schema.org issues:** {len(schema_summary['pages_with_issues'])}\n"
+        body += f"**Schema.org blocks found:** {schema_summary['total_blocks']}\n"
         
         if self.sitemap_urls:
             body += f"**Sitemap URLs found:** {len(self.sitemap_urls)}\n"
@@ -844,7 +866,37 @@ class FullSEOChecker:
                 for url in urls:
                     body += f"- {url}\n"
                 body += f"\n"
-        
+
+        # Schema.org Section
+        if self.schema_org_results:
+            body += f"## 🧩 Schema.org Structured Data\n\n"
+            body += f"**Pages with structured data:** {schema_summary['pages_with_schema']}\n"
+            body += f"**Pages with structured data issues:** {len(schema_summary['pages_with_issues'])}\n"
+            body += f"**JSON-LD blocks found:** {schema_summary['total_blocks']}\n"
+            body += f"**Valid blocks:** {schema_summary['valid_blocks']}\n\n"
+
+            if schema_summary['types_found']:
+                body += f"**Types found:** {', '.join(schema_summary['types_found'])}\n\n"
+
+            if schema_summary['pages_with_issues']:
+                body += f"### Failing Structured Data Findings\n\n"
+                for url in schema_summary['pages_with_issues']:
+                    result = self.schema_org_results[url]
+                    body += f"#### Page: {url}\n\n"
+                    for issue in result['issues']:
+                        block_text = f" (block {issue['block_index']})" if 'block_index' in issue else ''
+                        body += f"- ❌ **{issue['type']}**{block_text}: {issue['message']}\n"
+                    body += f"\n"
+
+            if schema_summary['pages_without_schema']:
+                body += f"### Informational: Pages Without Structured Data ({len(schema_summary['pages_without_schema'])})\n\n"
+                body += f"These pages do not include Schema.org markup. This is reported for visibility only and does not fail the audit.\n\n"
+                for url in schema_summary['pages_without_schema'][:MAX_URLS_IN_REPORT]:
+                    body += f"- {url}\n"
+                if len(schema_summary['pages_without_schema']) > MAX_URLS_IN_REPORT:
+                    body += f"\n*...and {len(schema_summary['pages_without_schema']) - MAX_URLS_IN_REPORT} more*\n"
+                body += f"\n"
+
         # Broken Links Section
         if self.broken_links:
             body += f"## 🔗 Broken Links\n\n"
@@ -908,6 +960,10 @@ class FullSEOChecker:
         body += f"### Language Attribute\n"
         body += f"- Helps search engines understand the page language\n"
         body += f"- Use `<html lang=\"en\">` or appropriate language code\n\n"
+        body += f"### Schema.org Structured Data\n"
+        body += f"- Prefer valid JSON-LD in `<script type=\"application/ld+json\">` blocks\n"
+        body += f"- Each item should define `@context` and `@type`\n"
+        body += f"- Malformed JSON-LD or missing identity fields should be fixed\n\n"
         body += f"### Performance\n"
         body += f"- LCP should be under 2.5 seconds\n"
         body += f"- TBT should be under 200ms\n"
@@ -928,6 +984,7 @@ class FullSEOChecker:
         # Count issues
         pages_with_issues = []
         seo_issues_list = []
+        schema_summary = self._get_schema_org_summary()
         
         for url, issues in self.seo_issues.items():
             if self._has_seo_issues(issues):
@@ -992,7 +1049,10 @@ class FullSEOChecker:
                 'total_broken_links': len(broken_links_list),
                 'duplicate_titles': len(self.duplicate_titles),
                 'sitemap_urls_found': len(self.sitemap_urls) if self.sitemap_urls else 0,
-                'sitemap_mismatches': len(self.urls_in_sitemap_not_crawled) + len(self.urls_crawled_not_in_sitemap)
+                'sitemap_mismatches': len(self.urls_in_sitemap_not_crawled) + len(self.urls_crawled_not_in_sitemap),
+                'pages_with_schema_org': schema_summary['pages_with_schema'],
+                'pages_with_schema_org_issues': len(schema_summary['pages_with_issues']),
+                'schema_org_blocks_found': schema_summary['total_blocks']
             },
             'performance': {
                 'grade': self.performance_grade,
@@ -1003,6 +1063,25 @@ class FullSEOChecker:
             'seo_issues': seo_issues_list,
             'broken_links': broken_links_list,
             'duplicate_titles': duplicate_titles_list,
+            'schema_org': {
+                'summary': {
+                    'pages_with_schema': schema_summary['pages_with_schema'],
+                    'pages_without_schema': len(schema_summary['pages_without_schema']),
+                    'pages_with_issues': len(schema_summary['pages_with_issues']),
+                    'total_blocks': schema_summary['total_blocks'],
+                    'valid_blocks': schema_summary['valid_blocks']
+                },
+                'types_found': schema_summary['types_found'],
+                'type_counts': schema_summary['type_counts'],
+                'issues': [
+                    {
+                        'url': url,
+                        'issues': self.schema_org_results[url]['issues']
+                    }
+                    for url in schema_summary['pages_with_issues']
+                ],
+                'pages_without_schema': schema_summary['pages_without_schema']
+            },
             'sitemap': {
                 'total_urls': len(self.sitemap_urls) if self.sitemap_urls else 0,
                 'sitemaps_processed': len(self.processed_sitemaps),
@@ -1063,6 +1142,9 @@ class FullSEOChecker:
         print(f"Pages with broken links: {len(self.broken_links)}")
         print(f"Performance issues: {len(self.performance_issues)}")
         print(f"Duplicate titles: {len(self.duplicate_titles)}")
+        schema_summary = self._get_schema_org_summary()
+        print(f"Pages with Schema.org: {schema_summary['pages_with_schema']}")
+        print(f"Pages with Schema.org issues: {len(schema_summary['pages_with_issues'])}")
         
         has_issues = False
         
@@ -1140,6 +1222,29 @@ class FullSEOChecker:
                     print(f"  - {url}")
             
             has_issues = True
+
+        # Report Schema.org issues
+        if schema_summary['pages_with_issues']:
+            print("\n" + "="*60)
+            print("SCHEMA.ORG ISSUES FOUND")
+            print("="*60)
+
+            for url in schema_summary['pages_with_issues']:
+                print(f"\n{url}:")
+                for issue in self.schema_org_results[url]['issues']:
+                    block_text = f" (block {issue['block_index']})" if 'block_index' in issue else ''
+                    print(f"  - {issue['type']}{block_text}: {issue['message']}")
+
+            has_issues = True
+
+        if schema_summary['pages_without_schema']:
+            print("\n" + "="*60)
+            print("PAGES WITHOUT SCHEMA.ORG")
+            print("="*60)
+            for url in schema_summary['pages_without_schema'][:MAX_URLS_IN_CONSOLE]:
+                print(f"  - {url}")
+            if len(schema_summary['pages_without_schema']) > MAX_URLS_IN_CONSOLE:
+                print(f"  ...and {len(schema_summary['pages_without_schema']) - MAX_URLS_IN_CONSOLE} more")
         
         # Report sitemap issues
         if self.sitemap_urls:
@@ -1171,12 +1276,12 @@ class FullSEOChecker:
                 webhook_success = self.send_to_webhook()
                 if webhook_success:
                     print("\n" + "="*60)
-                    print("❌ FAILED: SEO issues or broken links found!")
+                    print("❌ FAILED: SEO, Schema.org, or broken link issues found!")
                     print("Results sent to webhook instead of creating GitHub issue.")
                     print("="*60)
                 else:
                     print("\n" + "="*60)
-                    print("❌ FAILED: SEO issues or broken links found!")
+                    print("❌ FAILED: SEO, Schema.org, or broken link issues found!")
                     print("⚠️  Warning: Failed to send results to webhook.")
                     print("="*60)
             else:
@@ -1184,7 +1289,7 @@ class FullSEOChecker:
                 self.create_github_issue()
                 
                 print("\n" + "="*60)
-                print("❌ FAILED: SEO issues or broken links found!")
+                print("❌ FAILED: SEO, Schema.org, or broken link issues found!")
                 print("="*60)
             return False
         else:
@@ -1192,7 +1297,7 @@ class FullSEOChecker:
                 # Send success result to webhook
                 webhook_success = self.send_to_webhook()
                 print("\n" + "="*60)
-                print("✅ SUCCESS: No SEO issues or broken links found!")
+                print("✅ SUCCESS: No SEO, Schema.org, or broken link issues found!")
                 if webhook_success:
                     print("Results sent to webhook.")
                 else:
@@ -1200,7 +1305,7 @@ class FullSEOChecker:
                 print("="*60)
             else:
                 print("\n" + "="*60)
-                print("✅ SUCCESS: No SEO issues or broken links found!")
+                print("✅ SUCCESS: No SEO, Schema.org, or broken link issues found!")
                 print("="*60)
             return True
 
